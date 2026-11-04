@@ -1,0 +1,14 @@
+# Copiar para terraform.tfvars (gitignored) e preencher.
+# A região TEM de ser a home region da conta — Always Free não vale fora dela.
+
+region           = "sa-saopaulo-1"
+compartment_ocid = "ocid1.tenancy.oc1..xxxxxxxx"
+ssh_public_key   = "ssh-ed25519 AAAA... comentario"
+
+# Se a criação falhar com "Out of host capacity", tente 1 e depois 2.
+ad_index = 0
+
+# Não subir estes valores: acima de 2 OCPU / 12 GiB sai do Always Free
+# e, numa conta Pay As You Go, passa a cobrar.
+# ocpus         = 2
+# memory_in_gbs = 12

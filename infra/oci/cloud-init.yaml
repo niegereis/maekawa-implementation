@@ -1,0 +1,17 @@
+#cloud-config
+# Instala k3s de nó único. Traefik e ServiceLB ficam de fora: nenhum Service
+# LoadBalancer, nenhuma porta da aplicação na internet.
+# O API server escuta em 6443 só na VM; o NSG libera apenas SSH (22).
+package_update: true
+packages:
+  - curl
+  - ca-certificates
+
+runcmd:
+  - |
+    set -eux
+    if [ ! -x /usr/local/bin/k3s ]; then
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --disable=traefik --disable=servicelb --write-kubeconfig-mode 644 --tls-san 127.0.0.1" sh -
+    fi
+    until [ -f /etc/rancher/k3s/k3s.yaml ]; do sleep 2; done
+    k3s kubectl get nodes
