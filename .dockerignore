@@ -1,0 +1,10 @@
+target/
+logs/
+notes/
+docs/
+k8s/
+infra/
+scripts/
+.git/
+.github/
+*.md

@@ -1,1 +1,15 @@
 /notes/*
+
+# segredos e artefatos locais (ver plano, seção 7.3)
+*.pem
+.env
+kubeconfig*
+logs/
+target/
+.DS_Store
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfvars
+crash.log
