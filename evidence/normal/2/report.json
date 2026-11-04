@@ -1,0 +1,69 @@
+{
+  "expect": "normal",
+  "observer": {
+    "begins": 140,
+    "ends": 140,
+    "max_active": 1,
+    "violations": 0
+  },
+  "clients": {
+    "client-0": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    },
+    "client-1": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    },
+    "client-2": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    },
+    "client-3": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    },
+    "client-4": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    },
+    "client-5": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    },
+    "client-6": {
+      "requested": 20,
+      "committed": 20,
+      "timed_out": 0
+    }
+  },
+  "requests": {
+    "requested": 140,
+    "committed": 140,
+    "timed_out": 0,
+    "missing_committed": []
+  },
+  "protocol_messages": {
+    "FAILED": 165,
+    "INQUIRE": 27,
+    "LOCKED": 431,
+    "RELEASE": 420,
+    "RELINQUISH": 11,
+    "REQUEST": 420
+  },
+  "protocol_total": 1474,
+  "entries": 140,
+  "protocol_per_entry": 10.53,
+  "acquire_wait_ms": {
+    "n": 140,
+    "median": 591.2,
+    "p90": 1639.5,
+    "max": 3698.4
+  }
+}

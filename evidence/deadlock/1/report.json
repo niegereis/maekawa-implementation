@@ -1,0 +1,78 @@
+{
+  "expect": "deadlock",
+  "observer": {
+    "begins": 0,
+    "ends": 0,
+    "max_active": 0,
+    "violations": 0
+  },
+  "clients": {
+    "client-0": {
+      "requested": 1,
+      "committed": 0,
+      "timed_out": 1
+    },
+    "client-1": {
+      "requested": 1,
+      "committed": 0,
+      "timed_out": 1
+    },
+    "client-2": {
+      "requested": 1,
+      "committed": 0,
+      "timed_out": 1
+    },
+    "client-3": {
+      "requested": 0,
+      "committed": 0,
+      "timed_out": 0
+    },
+    "client-4": {
+      "requested": 0,
+      "committed": 0,
+      "timed_out": 0
+    },
+    "client-5": {
+      "requested": 0,
+      "committed": 0,
+      "timed_out": 0
+    },
+    "client-6": {
+      "requested": 0,
+      "committed": 0,
+      "timed_out": 0
+    }
+  },
+  "requests": {
+    "requested": 3,
+    "committed": 0,
+    "timed_out": 3,
+    "missing_committed": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        1
+      ]
+    ]
+  },
+  "protocol_messages": {
+    "LOCKED": 6,
+    "REQUEST": 9
+  },
+  "protocol_total": 15,
+  "entries": 0,
+  "protocol_per_entry": null,
+  "acquire_wait_ms": {
+    "n": 0,
+    "median": null,
+    "p90": null,
+    "max": null
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "expect": "sem-protocolo",
+  "observer": {
+    "begins": 35,
+    "ends": 35,
+    "max_active": 7,
+    "violations": 34
+  },
+  "clients": {
+    "client-0": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    },
+    "client-1": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    },
+    "client-2": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    },
+    "client-3": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    },
+    "client-4": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    },
+    "client-5": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    },
+    "client-6": {
+      "requested": 5,
+      "committed": 5,
+      "timed_out": 0
+    }
+  },
+  "requests": {
+    "requested": 35,
+    "committed": 35,
+    "timed_out": 0,
+    "missing_committed": []
+  },
+  "protocol_messages": {},
+  "protocol_total": 0,
+  "entries": 35,
+  "protocol_per_entry": 0.0,
+  "acquire_wait_ms": {
+    "n": 0,
+    "median": null,
+    "p90": null,
+    "max": null
+  }
+}
