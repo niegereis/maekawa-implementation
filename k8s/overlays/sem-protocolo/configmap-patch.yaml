@@ -1,0 +1,14 @@
+# Rodada de instrumentacao: protocolo desligado. O observador DEVE acusar sobreposicao.
+# Sem essa evidencia o verificador das rodadas seguintes nao vale.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  SYNC_ENABLED: "false"
+  ACCESSES: "5"
+  THINK_MIN_MS: "0"
+  THINK_MAX_MS: "0"
+  CS_MIN_MS: "200"
+  CS_MAX_MS: "1000"

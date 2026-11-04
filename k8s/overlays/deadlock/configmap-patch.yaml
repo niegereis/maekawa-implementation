@@ -1,0 +1,17 @@
+# Deadlock da versao basica (protocolo, secao 7). Tres clientes pedem; em cada no o gate segura
+# o REQUEST do ciclo (p0->p1, p1->p3, p2->p2) por 20 s a partir do momento em que o segura.
+# Os pods do Job chegam com alguns segundos de diferenca; 20 s cobre isso com folga.
+# Esperado: nenhum COMMITTED; clientes estouram REQUEST_TIMEOUT_MS; o Job falha de proposito.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  VARIANT: "basic"
+  GATE_HOLD: "REQUEST:sync-0>sync-1,REQUEST:sync-1>sync-3,REQUEST:sync-2>sync-2"
+  GATE_RELEASE_AFTER_MS: "20000"
+  ACCESSES_BY_CLIENT: "1,1,1,0,0,0,0"
+  THINK_MIN_MS: "0"
+  THINK_MAX_MS: "0"
+  REQUEST_TIMEOUT_MS: "45000"

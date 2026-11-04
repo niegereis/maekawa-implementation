@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: maekawa
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - sync-statefulset.yaml
+  - observer.yaml
+  - clients-job.yaml
+images:
+  - name: ghcr.io/OWNER/maekawa
+    newName: ghcr.io/OWNER/maekawa   # scripts/kind-up.sh e o CI trocam por `kustomize edit set image`
+    newTag: latest

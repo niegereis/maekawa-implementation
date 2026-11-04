@@ -1,0 +1,29 @@
+# Parametros do experimento. Os overlays em k8s/overlays/* sobrescrevem campos daqui.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  # --- nos
+  VARIANT: "resolution"          # basic | resolution
+  SYNC_ENABLED: "true"           # false = rodada de instrumentacao (acquire/release viram no-op)
+  CS_MIN_MS: "200"               # secao critica simulada: sleep uniforme em [CS_MIN_MS, CS_MAX_MS]
+  CS_MAX_MS: "1000"
+  GATE_HOLD: ""                  # so o overlay deadlock preenche
+  GATE_RELEASE_AFTER_MS: "3000"   # conta a partir do primeiro REQUEST segurado
+  # --- clientes
+  ACCESSES: "20"                 # 10..50 pelo enunciado
+  THINK_MIN_MS: "1000"           # pausa entre pedidos do mesmo cliente
+  THINK_MAX_MS: "5000"
+  START_DELAY_MS: "0"
+  # ACCESSES, THINK_MIN_MS, THINK_MAX_MS e START_DELAY_MS aceitam a forma X_BY_CLIENT="v0,v1,..."
+  # para dar valores diferentes a cada cliente (carga desigual, cenario de deadlock).
+  ACCESSES_BY_CLIENT: ""
+  THINK_MIN_MS_BY_CLIENT: ""
+  THINK_MAX_MS_BY_CLIENT: ""
+  START_DELAY_MS_BY_CLIENT: ""
+  REQUEST_TIMEOUT_MS: "60000"
+  # --- rede (nao mudar entre overlays)
+  PEER_ADDR_PATTERN: "sync-%d.sync.maekawa.svc.cluster.local:7000"
+  OBSERVER_ADDR: "observer.maekawa.svc.cluster.local:7100"

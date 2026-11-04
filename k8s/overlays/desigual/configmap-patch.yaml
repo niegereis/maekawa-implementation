@@ -1,0 +1,15 @@
+# Carga desigual: client-0 pede sem pausa; os outros com a pausa normal.
+# Justica se discute pela distribuicao de espera e de acessos, nao como prova de ausencia de starvation.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  VARIANT: "resolution"
+  SYNC_ENABLED: "true"
+  ACCESSES: "20"
+  THINK_MIN_MS: "1000"
+  THINK_MAX_MS: "5000"
+  THINK_MIN_MS_BY_CLIENT: "0"
+  THINK_MAX_MS_BY_CLIENT: "0"

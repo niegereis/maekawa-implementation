@@ -1,0 +1,37 @@
+# Uma rodada = um Job. Sete pods indexados; client-i fala so com sync-i.
+# O Job termina quando os sete clientes receberam todos os COMMITTED (ou estouraram o timeout).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clients
+  namespace: maekawa
+spec:
+  completions: 7
+  parallelism: 7
+  completionMode: Indexed
+  backoffLimit: 0                 # um cliente que falha nao e refeito: o log e a evidencia
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: client
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: client
+          image: ghcr.io/OWNER/maekawa:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROLE
+              value: client
+            # CLIENT_ID vem de JOB_COMPLETION_INDEX; TARGET vira sync-<CLIENT_ID>
+          envFrom:
+            - configMapRef:
+                name: experiment
+          resources:
+            requests:
+              cpu: 25m
+              memory: 96Mi
+            limits:
+              memory: 160Mi

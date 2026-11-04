@@ -1,0 +1,55 @@
+# Observador de BEGIN/END. So registra; nao concede permissao e nao e um mutex.
+apiVersion: v1
+kind: Service
+metadata:
+  name: observer
+  namespace: maekawa
+spec:
+  selector:
+    app: observer
+  ports:
+    - name: instrumentation
+      port: 7100
+      targetPort: 7100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observer
+  namespace: maekawa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: observer
+  template:
+    metadata:
+      labels:
+        app: observer
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: observer
+          image: ghcr.io/OWNER/maekawa:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROLE
+              value: observer
+            - name: LISTEN_PORT
+              value: "7100"
+          envFrom:
+            - configMapRef:
+                name: experiment
+          ports:
+            - containerPort: 7100
+          readinessProbe:
+            tcpSocket:
+              port: 7100
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 192Mi

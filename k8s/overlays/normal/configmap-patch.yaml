@@ -1,0 +1,12 @@
+# Carga normal: 7 clientes, 20 acessos cada, pausa de 1-5 s entre pedidos, variante ligada.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  VARIANT: "resolution"
+  SYNC_ENABLED: "true"
+  ACCESSES: "20"
+  THINK_MIN_MS: "1000"
+  THINK_MAX_MS: "5000"

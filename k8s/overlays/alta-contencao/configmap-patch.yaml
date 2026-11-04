@@ -1,0 +1,13 @@
+# Alta contencao: igual a normal, sem pausa entre pedidos; os 7 clientes disparam juntos.
+# Devem aparecer FAILED, INQUIRE e RELINQUISH no log.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  VARIANT: "resolution"
+  SYNC_ENABLED: "true"
+  ACCESSES: "20"
+  THINK_MIN_MS: "0"
+  THINK_MAX_MS: "0"

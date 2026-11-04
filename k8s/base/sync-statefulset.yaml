@@ -1,0 +1,64 @@
+# Os 7 nos do Cluster Sync. StatefulSet da nomes estaveis (sync-0 .. sync-6) via Service headless;
+# o PROCESS_ID sai do ordinal do hostname. Nenhuma porta e exposta fora do cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sync
+  namespace: maekawa
+  labels:
+    app: sync
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true   # o DNS do par resolve mesmo antes do readiness, evitando corrida na subida
+  selector:
+    app: sync
+  ports:
+    - name: protocol
+      port: 7000
+      targetPort: 7000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sync
+  namespace: maekawa
+spec:
+  serviceName: sync
+  replicas: 7
+  podManagementPolicy: Parallel     # sobem juntos; o transporte reconecta ate o par ouvir
+  selector:
+    matchLabels:
+      app: sync
+  template:
+    metadata:
+      labels:
+        app: sync
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: sync
+          image: ghcr.io/OWNER/maekawa:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROLE
+              value: node
+            - name: LISTEN_PORT
+              value: "7000"
+            # PROCESS_ID vem do HOSTNAME (sync-3 -> 3); o Main faz o parse
+          envFrom:
+            - configMapRef:
+                name: experiment
+          ports:
+            - containerPort: 7000
+              name: protocol
+          readinessProbe:
+            tcpSocket:
+              port: 7000
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 192Mi
