@@ -1,0 +1,91 @@
+# Lê o stdout dos pods em maekawa e envia ao Loki. Precisa rodar no nó do k3s.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail
+  namespace: observability
+data:
+  config.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+    positions:
+      filename: /tmp/positions.yaml
+    clients:
+      - url: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: maekawa
+        static_configs:
+          - targets: [localhost]
+            labels:
+              job: maekawa
+              namespace: maekawa
+              __path__: /var/log/pods/maekawa_*/*/*.log
+        pipeline_stages:
+          - cri: {}
+          - regex:
+              source: filename
+              expression: '/var/log/pods/[^_]+_(?P<pod>.+)_[0-9a-f-]{36}/(?P<container>[^/]+)/'
+          - labels:
+              pod:
+              container:
+          - json:
+              expressions:
+                event: event
+                process: process
+                kind: kind
+          - labels:
+              event:
+              process:
+              kind:
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+    spec:
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: promtail
+          image: grafana/promtail:2.9.10
+          args: ["-config.file=/etc/promtail/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 9080
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+          securityContext:
+            runAsUser: 0
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 192Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/promtail
+            - name: pods
+              mountPath: /var/log/pods
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: promtail
+        - name: pods
+          hostPath:
+            path: /var/log/pods
+            type: Directory

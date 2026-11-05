@@ -38,8 +38,10 @@ src/test/java/...           QuorumTest, PriorityTest, VoterTest, RequesterTest, 
                             ModeSwitchTest, ObserverHttpTest
 k8s/base                    namespace, ConfigMap, StatefulSet sync (7), Deployment observer, Job clients (7, indexado)
 k8s/overlays/*              sem-protocolo · deadlock · normal · alta-contencao · desigual
+k8s/observability           Grafana + Loki + Promtail (logs ao vivo; sem LoadBalancer)
+viz/                        replay dos 7 nós a partir dos JSON Lines
 infra/oci/                  Terraform Always Free (A1.Flex + VCN + NSG SSH) e cloud-init do k3s
-scripts/                    local-run.sh · kind-up.sh · oci-*.sh · run-experiment.sh · verify.py
+scripts/                    local-run.sh · kind-up.sh · oci-*.sh · run-experiment.sh · verify.py · viz.sh · obs-up.sh
 ```
 
 ## Rodar
@@ -140,6 +142,25 @@ O verificador falha se: rodada normal tiver violação ou pedido sem COMMITTED; 
 | `desigual` | client-0 sem pausa, demais normais; distribuição de espera |
 
 Resultado de referência numa máquina local (7 clientes × 5 acessos, sem pausa, CS 20–80 ms): 35 entradas, 0 violações, 11,9 mensagens de protocolo por entrada (teoria: 3√N a 6√N ≈ 8 a 16 para N = 7), 96 FAILED, 2 INQUIRE, 2 RELINQUISH.
+
+## Ver os nós e os logs
+
+O desenho dos 7 processos **não** é o Grafana. É o replay local, com pausa:
+
+```bash
+scripts/viz.sh          # http://127.0.0.1:8765
+```
+
+A página lê `logs/<overlay>/<rep>/*.jsonl` (a suíte grava isso) ou arquivos escolhidos na tela. `LOCKED` acende o voto, `RELEASE`/`RELINQUISH` devolve, `BEGIN`/`END` do observador marcam quem está em R. A rodada "exemplo sintético" só ensina os botões; não é a suíte da Oracle. Espaço pausa, setas andam um evento.
+
+O Grafana mostra **gráficos e a lista de logs**, no mesmo cluster, namespace `observability` (o experimento não apaga). Sem porta pública:
+
+```bash
+scripts/obs-up.sh
+kubectl -n observability port-forward svc/grafana 3000:3000
+```
+
+Login `admin` / `maekawa`. Pasta **Maekawa**: mensagens por tipo, violações e o texto JSON. Promtail só lê pods de `maekawa`.
 
 ## Logs
 
