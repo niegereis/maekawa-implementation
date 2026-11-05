@@ -7,6 +7,8 @@ Sete processos independentes (`sync-0` … `sync-6`) sincronizam o acesso de esc
 
 Um **observador** registra BEGIN/END, confirma o registro (`BEGIN_ACK`/`END_ACK`) e acusa sobreposições; ele não concede permissão nem bloqueia ninguém. O nó espera o ACK do END antes de enviar RELEASE, para que o observador veja o fim de um acesso antes do início do próximo. Sete **clientes**, um por nó, geram `request_id = (client_id, seq)` e esperam COMMITTED.
 
+O Maekawa pode ser **ligado e desligado em tempo de execução** pela API HTTP do observador (`GET`/`POST /mode`); veja [Ligar e desligar o Maekawa em execução](#ligar-e-desligar-o-maekawa-em-execução).
+
 O Kubernetes só orquestra (nomes estáveis, subida, logs). Nenhum `Lease`, lock do etcd ou serviço de nuvem entra na sincronização.
 
 Documentos: [plano](notes/plano-maekawa-a6.md) · [protocolo](docs/protocolo.md) · [estados do protocolo](docs/diagrama-processo.excalidraw) · [fluxo do código](docs/fluxo-implementacao.excalidraw) (abrir em excalidraw.com).
@@ -30,8 +32,10 @@ src/main/java/br/ufop/bcc362/maekawa/
   common/                   Message, RequestId, Priority, LamportClock, Transport (TCP e em memória), DeliveryGate, EventLog
   node/                     Quorum (Fano), Requester, Voter, Node (acquire/enter/release)
   client/Client.java        gera pedidos, espera COMMITTED
-  observer/Observer.java    conta ativos em R, grava VIOLATION
-src/test/java/...           QuorumTest, PriorityTest, VoterTest, RequesterTest, DeadlockScenarioTest, ClusterContentionTest
+  observer/Observer.java    conta ativos em R, grava VIOLATION, guarda e anuncia o modo (épocas)
+  observer/ObserverHttp.java API HTTP do frontend: /mode, /stats, /healthz
+src/test/java/...           QuorumTest, PriorityTest, VoterTest, RequesterTest, DeadlockScenarioTest, ClusterContentionTest,
+                            ModeSwitchTest, ObserverHttpTest
 k8s/base                    namespace, ConfigMap, StatefulSet sync (7), Deployment observer, Job clients (7, indexado)
 k8s/overlays/*              sem-protocolo · deadlock · normal · alta-contencao · desigual
 infra/oci/                  Terraform Always Free (A1.Flex + VCN + NSG SSH) e cloud-init do k3s
@@ -56,7 +60,36 @@ scripts/local-run.sh 5 0 0                 # 7 nós + observador + 7 clientes, 5
 python3 scripts/verify.py logs/local/<timestamp>
 ```
 
-Portas: `localhost:7200..7206` e observador `:7300` (`BASE` muda a base; a 7000 é do AirPlay no macOS).
+Portas: `localhost:7200..7206`, observador `:7300` e API HTTP do observador `:7380` (`BASE` muda a base; `HTTP_PORT` muda a da API; a 7000 é do AirPlay no macOS).
+
+### Ligar e desligar o Maekawa em execução
+
+`SYNC_ENABLED` é só o modo **inicial**. Com tudo rodando, o observador expõe uma API HTTP (porta 8080 no cluster; `HTTP_PORT=0` desliga) para o frontend de observabilidade:
+
+| Rota | O que faz |
+|---|---|
+| `GET /mode` | modo atual, época, quantos nós confirmaram (`acked`/`nodes`), `settled` e a época de cada nó |
+| `POST /mode` | corpo `{"sync_enabled": false}` (ou `?sync_enabled=false`): troca o modo e anuncia aos 7 nós |
+| `GET /stats` | contadores do observador, no total e por época, mais o modo |
+| `GET /healthz` | `{"status":"ok"}` |
+
+As respostas são JSON com `Access-Control-Allow-Origin` (`HTTP_CORS_ORIGIN`, padrão `*`).
+
+```bash
+kubectl -n maekawa port-forward svc/observer 8080:8080
+curl -s localhost:8080/mode
+curl -s -XPOST -H 'Content-Type: application/json' -d '{"sync_enabled": false}' localhost:8080/mode
+curl -s localhost:8080/stats
+```
+
+Como funciona:
+
+- **O observador é a fonte do modo.** Ele guarda `sync_enabled` e uma **época** em memória. Cada troca abre uma época nova, e o observador manda `MODE` aos 7 nós. Cada nó guarda o valor num `AtomicReference` e responde `MODE_ACK`. O observador continua sem conceder nada: o modo só diz se os nós pedem votos antes de entrar.
+- **Cada pedido fixa o modo no `acquire`** e sai com o mesmo modo no `release`. Um pedido que pegou votos sempre os devolve, mesmo que o Maekawa seja desligado enquanto ele está na seção crítica. A troca vale a partir do próximo pedido de cada nó.
+- **Transição:** por alguns instantes convivem pedidos dos dois modos. Uma violação só conta para a época quando os 7 nós já confirmaram a época e todos os acessos ativos foram admitidos nela; as demais aparecem em `transition_violations` e no log como `VIOLATION` com `"transition": true`.
+- **Reinício:** ao subir, o nó manda `MODE_QUERY` e adota a resposta. Se o observador reiniciar, ele volta ao `SYNC_ENABLED` do ConfigMap, na época 0, e reanuncia o modo a cada nó no primeiro contato. Por isso o observador e os nós precisam ler o mesmo `SYNC_ENABLED` (no cluster, ambos usam o ConfigMap `experiment`).
+
+O `verify.py` continua avaliando a rodada inteira: numa rodada `normal` em que o Maekawa foi desligado no meio, ele vai acusar as violações da época sem protocolo. Para comparar as fases, use `GET /stats` ou os campos `epoch`/`transition` dos eventos `VIOLATION`.
 
 ### Kubernetes local (kind)
 

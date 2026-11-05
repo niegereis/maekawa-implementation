@@ -7,7 +7,9 @@ import br.ufop.bcc362.maekawa.node.Node;
 import br.ufop.bcc362.maekawa.node.NodeConfig;
 import br.ufop.bcc362.maekawa.node.Quorum;
 import br.ufop.bcc362.maekawa.node.Variant;
+import br.ufop.bcc362.maekawa.common.EventLog;
 import br.ufop.bcc362.maekawa.observer.Observer;
+import br.ufop.bcc362.maekawa.observer.ObserverHttp;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.CountDownLatch;
@@ -22,13 +24,15 @@ import java.util.function.Function;
  *   OBSERVER_ADDR      (padrao "observer:7100")
  *
  * node:     PROCESS_ID (ou HOSTNAME sync-i), LISTEN_PORT=7000, VARIANT=basic|resolution,
- *           SYNC_ENABLED=true|false, CS_MIN_MS=200, CS_MAX_MS=1000,
+ *           SYNC_ENABLED=true|false (modo inicial; o observador pode trocar em tempo de execucao),
+ *           CS_MIN_MS=200, CS_MAX_MS=1000,
  *           GATE_HOLD="REQUEST:sync-0>sync-1,...", GATE_RELEASE_AFTER_MS=3000
  * client:   CLIENT_ID (ou JOB_COMPLETION_INDEX), TARGET=sync-<id>, ACCESSES=20,
  *           THINK_MIN_MS=1000, THINK_MAX_MS=5000, START_DELAY_MS=0, REQUEST_TIMEOUT_MS=60000.
  *           Qualquer um desses quatro aceita a forma X_BY_CLIENT="v0,v1,...,v6" para carga desigual
  *           (ex.: ACCESSES_BY_CLIENT="1,1,1,0,0,0,0" no cenario de deadlock).
- * observer: LISTEN_PORT=7100
+ * observer: LISTEN_PORT=7100, SYNC_ENABLED=true|false (modo da epoca 0, o mesmo dos nos),
+ *           HTTP_PORT=8080 (API /mode e /stats para o frontend; 0 desliga), HTTP_CORS_ORIGIN="*"
  */
 public final class Main {
     public static void main(String[] args) throws Exception {
@@ -85,9 +89,20 @@ public final class Main {
 
     private static void runObserver() throws Exception {
         TcpTransport transport = new TcpTransport("observer", envInt("LISTEN_PORT", 7100), resolver(), null);
-        Observer observer = new Observer(transport);
+        Observer observer = new Observer(transport, new EventLog(Observer.NAME, null),
+                Quorum.fano().size(), envBool("SYNC_ENABLED", true));
         observer.start();
-        Runtime.getRuntime().addShutdownHook(new Thread(observer::close));
+        int httpPort = envInt("HTTP_PORT", 8080);
+        ObserverHttp http = null;
+        if (httpPort > 0) {
+            http = new ObserverHttp(observer, httpPort, env("HTTP_CORS_ORIGIN", "*"));
+            http.start();
+        }
+        ObserverHttp httpRef = http;
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (httpRef != null) httpRef.close();
+            observer.close();
+        }));
         new CountDownLatch(1).await();
     }
 

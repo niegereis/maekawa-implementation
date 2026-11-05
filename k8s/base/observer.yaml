@@ -11,6 +11,11 @@ spec:
     - name: instrumentation
       port: 7100
       targetPort: 7100
+    # API do frontend: GET/POST /mode liga e desliga o Maekawa; GET /stats. Acesso de fora:
+    # kubectl -n maekawa port-forward svc/observer 8080:8080
+    - name: http
+      port: 8080
+      targetPort: 8080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -37,11 +42,14 @@ spec:
               value: observer
             - name: LISTEN_PORT
               value: "7100"
+            - name: HTTP_PORT
+              value: "8080"
           envFrom:
             - configMapRef:
                 name: experiment
           ports:
             - containerPort: 7100
+            - containerPort: 8080
           readinessProbe:
             tcpSocket:
               port: 7100

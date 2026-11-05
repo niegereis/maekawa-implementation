@@ -35,13 +35,27 @@ final class TestCluster implements AutoCloseable {
             Node n = new Node(cfg, q, net.endpoint(NodeConfig.nodeName(i)), new EventLog(NodeConfig.nodeName(i), i, QUIET));
             nodes.add(n);
         }
-        observer = new Observer(net.endpoint("observer"), new EventLog("observer", null, QUIET));
+        observer = new Observer(net.endpoint("observer"), new EventLog("observer", null, QUIET), q.size(), syncEnabled);
         observer.start();
         nodes.forEach(Node::start);
     }
 
     Node node(int i) {
         return nodes.get(i);
+    }
+
+    /** Troca o modo pelo observador e espera os N nos confirmarem a nova epoca. */
+    void switchMode(boolean sync) throws InterruptedException {
+        observer.setSyncEnabled(sync);
+        awaitSettled();
+    }
+
+    void awaitSettled() throws InterruptedException {
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (observer.acked() < nodes.size()) {
+            if (System.nanoTime() > deadline) throw new AssertionError("nos nao confirmaram o modo: " + observer.modeStatus());
+            Thread.sleep(5);
+        }
     }
 
     @Override

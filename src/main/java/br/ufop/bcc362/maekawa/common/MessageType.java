@@ -18,7 +18,13 @@ public enum MessageType {
     BEGIN(Kind.INSTRUMENTATION),
     END(Kind.INSTRUMENTATION),
     BEGIN_ACK(Kind.INSTRUMENTATION),
-    END_ACK(Kind.INSTRUMENTATION);
+    END_ACK(Kind.INSTRUMENTATION),
+    // controle do experimento: liga/desliga o Maekawa em tempo de execucao.
+    // O observador e a fonte do modo; MODE vai para os nos, MODE_ACK volta, MODE_QUERY e o no
+    // perguntando o modo atual ao subir.
+    MODE(Kind.INSTRUMENTATION),
+    MODE_ACK(Kind.INSTRUMENTATION),
+    MODE_QUERY(Kind.INSTRUMENTATION);
 
     public enum Kind { PROTOCOL, INSTRUMENTATION }
 

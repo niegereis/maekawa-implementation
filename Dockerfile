@@ -14,5 +14,5 @@ COPY --from=build /src/target/maekawa.jar /app/maekawa.jar
 # heap pequeno, GC serial, sem C2. A imagem e linux/amd64 (kind) e linux/arm64 (A1).
 ENV JAVA_OPTS="-XX:+UseSerialGC -Xmx96m -Xss512k -XX:TieredStopAtLevel=1 -XX:+ExitOnOutOfMemoryError"
 ENV ROLE=node
-EXPOSE 7000 7100
+EXPOSE 7000 7100 8080
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/maekawa.jar"]

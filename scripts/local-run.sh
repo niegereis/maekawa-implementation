@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sobe 7 nos + observador em processos locais (localhost:BASE..BASE+6, observer :BASE+100;
 # BASE=7200 por padrao, porque o macOS ocupa a 7000 com o AirPlay Receiver),
+# API do observador em localhost:BASE+180 (GET/POST /mode, GET /stats);
 # dispara 7 clientes e espera. Serve para testar o transporte TCP sem Kubernetes.
 #
 # uso: scripts/local-run.sh [ACCESSES] [THINK_MIN_MS] [THINK_MAX_MS] [VARIANT] [SYNC_ENABLED]
@@ -56,7 +57,9 @@ pids=()
 cleanup() { for p in "${pids[@]:-}"; do kill "$p" 2>/dev/null || true; done; }
 trap cleanup EXIT
 
-ROLE=observer LISTEN_PORT=$((BASE + 100)) java $JVM_OPTS -jar "$JAR" > "$OUT/observer.jsonl" 2>"$OUT/observer.err" &
+# o observador precisa do mesmo SYNC_ENABLED: ele anuncia o modo da epoca 0 aos nos.
+# API em http://localhost:$((BASE + 180))/mode (HTTP_PORT sobrescreve)
+ROLE=observer LISTEN_PORT=$((BASE + 100)) SYNC_ENABLED="$SYNC" HTTP_PORT="${HTTP_PORT:-$((BASE + 180))}" java $JVM_OPTS -jar "$JAR" > "$OUT/observer.jsonl" 2>"$OUT/observer.err" &
 pids+=($!)
 for i in 0 1 2 3 4 5 6; do
   ROLE=node PROCESS_ID=$i LISTEN_PORT=$((BASE + i)) VARIANT="$VARIANT" SYNC_ENABLED="$SYNC" \

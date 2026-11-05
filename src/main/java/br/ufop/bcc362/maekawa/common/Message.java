@@ -14,6 +14,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * @param requestId pedido a que a mensagem se refere
  * @param priority  prioridade do pedido (so em REQUEST)
  * @param processId id numerico do processo remetente, quando for um no do cluster
+ * @param syncEnabled modo do protocolo (so em MODE / MODE_ACK)
+ * @param epoch     epoca do modo: em MODE / MODE_ACK e a epoca anunciada; em BEGIN / END e a
+ *                  epoca em que o pedido foi admitido no no
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record Message(@JsonProperty("type") MessageType type,
@@ -22,21 +25,31 @@ public record Message(@JsonProperty("type") MessageType type,
                       @JsonProperty("lamport") long lamport,
                       @JsonProperty("request_id") RequestId requestId,
                       @JsonProperty("priority") Priority priority,
-                      @JsonProperty("process_id") Integer processId) {
+                      @JsonProperty("process_id") Integer processId,
+                      @JsonProperty("sync_enabled") Boolean syncEnabled,
+                      @JsonProperty("epoch") Long epoch) {
 
     @JsonCreator
     public Message {
     }
 
     public static Message of(MessageType type, String from, String to, long lamport, RequestId requestId) {
-        return new Message(type, from, to, lamport, requestId, null, null);
+        return new Message(type, from, to, lamport, requestId, null, null, null, null);
     }
 
     public Message withPriority(Priority p) {
-        return new Message(type, from, to, lamport, requestId, p, processId);
+        return new Message(type, from, to, lamport, requestId, p, processId, syncEnabled, epoch);
     }
 
     public Message withProcessId(int pid) {
-        return new Message(type, from, to, lamport, requestId, priority, pid);
+        return new Message(type, from, to, lamport, requestId, priority, pid, syncEnabled, epoch);
+    }
+
+    public Message withMode(boolean sync, long ep) {
+        return new Message(type, from, to, lamport, requestId, priority, processId, sync, ep);
+    }
+
+    public Message withEpoch(long ep) {
+        return new Message(type, from, to, lamport, requestId, priority, processId, syncEnabled, ep);
     }
 }
