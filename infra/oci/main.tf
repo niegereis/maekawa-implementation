@@ -154,7 +154,7 @@ resource "oci_core_instance" "k3s" {
   lifecycle {
     precondition {
       condition     = var.ocpus <= 2 && var.memory_in_gbs <= 12
-      error_message = "Always Free Ampere A1 hoje é 2 OCPU e 12 GiB no total. Acima disso cobra se a conta for PAYG."
+      error_message = "Teto deste TP: 2 OCPU e 12 GiB. Acima disso o trial gasta mais e, em PAYG, cobra."
     }
   }
 }

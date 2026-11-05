@@ -15,7 +15,7 @@ import java.util.function.Function;
 
 /**
  * Ponto de entrada unico. ROLE=node|client|observer escolhe o papel; o resto vem de
- * variaveis de ambiente, para o mesmo jar rodar local, no kind e no AKS.
+ * variaveis de ambiente, para o mesmo jar rodar local, no kind e no k3s.
  *
  * Variaveis comuns:
  *   PEER_ADDR_PATTERN  endereco do no i, com %d  (padrao "sync-%d.sync:7000"; local: "localhost:70%02d")

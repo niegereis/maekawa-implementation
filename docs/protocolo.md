@@ -68,7 +68,7 @@ Invariante: no máximo um pedido com LOCKED vigente por votante.
 
 ## 5. Pedinte (`Requester`)
 
-Estado por nó: `current: Optional<Request>` (pedido em andamento), `votes: Set<process_id>` (LOCKED vigentes), `failed: boolean` (recebeu ao menos um FAILED e ainda não tem quórum).
+Estado por nó: `current: Optional<Request>` (pedido em andamento), `votes: Set<process_id>` (LOCKED vigentes), `failed: boolean` (chegou ao menos um FAILED neste pedido; o artigo usa o flag na regra do INQUIRE, mas aqui ele só é anotado).
 
 Estados: **Ocioso**, **Coletando**, **Cedendo** (recebeu INQUIRE e devolveu votos), **Seção crítica**, **Liberando**.
 
@@ -77,13 +77,15 @@ Estados: **Ocioso**, **Coletando**, **Cedendo** (recebeu INQUIRE e devolveu voto
 | Ocioso | ACQUIRE_REQ do cliente | `current = r`; `tick()`; envia REQUEST a cada membro de Si (o próprio inclusive, tratado localmente) | Coletando |
 | Coletando | LOCKED de v | `votes += v`. Se `votes == Si`: registra ACQUIRE e vai para a seção crítica | Coletando ou Seção crítica |
 | Coletando | FAILED de v | `failed = true` | Coletando |
-| Coletando | INQUIRE de v | **se `failed` ou `votes != Si`:** envia RELINQUISH a v, `votes -= v` | Cedendo |
+| Coletando | INQUIRE de v | **se `votes != Si`:** envia RELINQUISH a v, `votes -= v` | Cedendo |
 | Cedendo | LOCKED de v | `votes += v`; se `votes == Si` → Seção crítica | Cedendo ou Seção crítica |
 | Cedendo / Coletando | INQUIRE de outro v' | mesma regra: cede se ainda não tem quórum | Cedendo |
 | Seção crítica | INQUIRE de v | **não cede**; ignora (o voto volta no RELEASE) | Seção crítica |
 | Seção crítica | fim do sleep | registra EXIT; envia RELEASE a cada membro de Si; `votes = ∅`; envia COMMITTED ao cliente | Liberando → Ocioso |
 
 Seção crítica (`CriticalSection`): envia BEGIN ao observador, dorme 0,2–1,0 s, envia END. Ocorre **fora** do lock do nó, para que o nó continue votando.
+
+O artigo descreve o INQUIRE como “cede se `failed` ou se o quórum está incompleto”. Ter os K votos é exatamente o estado Seção crítica, então o código cede só quando ainda não está nesse estado. O flag `failed` é anotado (`onFailed`) e não altera a decisão.
 
 Regra de corrida: se um INQUIRE chegar **depois** do terceiro LOCKED (pedinte já em Seção crítica), ele é ignorado. O votante que indagou permanece em Indagando até o RELEASE, que então concede ao próximo da fila. Isso é o que o artigo prevê; não há preempção dentro da seção crítica.
 

@@ -2,14 +2,58 @@
 # Executa uma rodada: aplica o overlay, reinicia os nos e o observador (estado limpo),
 # espera o Job de clientes, recolhe os logs em logs/<overlay>/<rep>/ e roda o verificador.
 #
-# uso: scripts/run-experiment.sh <overlay> [rep]      overlay em k8s/overlays/
+# uso: scripts/run-experiment.sh <overlay> [rep] [--accesses N]
+#      ACCESSES=N scripts/run-experiment.sh <overlay> [rep]
+# overlay em k8s/overlays/: sem-protocolo | deadlock | normal | alta-contencao | desigual
+# --accesses (ou ACCESSES) sobrescreve o ConfigMap da rodada (padrao do overlay: 20, 5 em sem-protocolo).
+# no overlay deadlock, ACCESSES_BY_CLIENT continua mandando (1,1,1,0,0,0,0); a flag nao muda o cenario.
 # ex.: scripts/run-experiment.sh alta-contencao 1
-#      IMAGE=maekawa:dev scripts/run-experiment.sh deadlock 1     # no kind, com a imagem local
+#      IMAGE=maekawa:dev scripts/run-experiment.sh normal 1 --accesses 30
+#      ACCESSES=10 IMAGE=maekawa:dev scripts/run-experiment.sh deadlock 1
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OVERLAY="${1:?overlay (sem-protocolo|deadlock|normal|alta-contencao|desigual)}"
-REP="${2:-1}"
+OVERLAY=""
+REP=""
+ACCESSES="${ACCESSES:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --accesses)
+      ACCESSES="${2:?--accesses precisa de um inteiro (10-50 no enunciado)}"
+      shift 2 ;;
+    --accesses=*)
+      ACCESSES="${1#--accesses=}"
+      shift ;;
+    -h|--help)
+      sed -n '2,14p' "$0"
+      exit 0 ;;
+    -*)
+      echo "flag desconhecida: $1 (esperado: --accesses N)" >&2
+      exit 1 ;;
+    *)
+      if [ -z "$OVERLAY" ]; then OVERLAY="$1"
+      elif [ -z "$REP" ]; then REP="$1"
+      else echo "argumento extra: $1" >&2; exit 1
+      fi
+      shift ;;
+  esac
+done
+OVERLAY="${OVERLAY:?overlay (sem-protocolo|deadlock|normal|alta-contencao|desigual)}"
+REP="${REP:-1}"
+
+if [ -n "$ACCESSES" ]; then
+  case "$ACCESSES" in
+    ''|*[!0-9]*) echo "ACCESSES deve ser um inteiro positivo, veio: $ACCESSES" >&2; exit 1 ;;
+  esac
+  if [ "$ACCESSES" -lt 1 ]; then echo "ACCESSES deve ser >= 1, veio: $ACCESSES" >&2; exit 1; fi
+  if [ "$ACCESSES" -lt 10 ] || [ "$ACCESSES" -gt 50 ]; then
+    echo "aviso: enunciado pede 10-50 acessos por cliente; usando $ACCESSES" >&2
+  fi
+  if [ "$OVERLAY" = deadlock ]; then
+    echo "aviso: overlay deadlock usa ACCESSES_BY_CLIENT=1,1,1,0,0,0,0; --accesses nao altera o cenario" >&2
+  fi
+fi
+
 NS=maekawa
 IMAGE="${IMAGE:-}"                       # vazio = imagem do manifest (ghcr); no kind: IMAGE=maekawa:dev
 JOB_TIMEOUT="${JOB_TIMEOUT:-30m}"
@@ -30,6 +74,19 @@ is_job = lambda d: re.search(r'^kind: Job$', d, flags=re.M) is not None
 open(sys.argv[2] + '/infra.yaml', 'w').write('\n---\n'.join(d for d in docs if not is_job(d)))
 open(sys.argv[2] + '/job.yaml', 'w').write('\n---\n'.join(d for d in docs if is_job(d)))
 EOF
+
+if [ -n "$ACCESSES" ]; then
+  python3 - "$OUT/infra.yaml" "$ACCESSES" <<'EOF'
+import re, sys
+path, n = sys.argv[1], sys.argv[2]
+text = open(path).read()
+new, count = re.subn(r'(^  ACCESSES: )"\d+"', rf'\1"{n}"', text, count=1, flags=re.M)
+if count != 1:
+    sys.exit(f"nao achei ACCESSES no ConfigMap (substituicoes={count})")
+open(path, "w").write(new)
+EOF
+  echo "ACCESSES=$ACCESSES (sobrescreveu o overlay)"
+fi
 
 kubectl -n $NS delete job clients --ignore-not-found --wait=true >/dev/null
 kubectl apply -f "$OUT/infra.yaml"
@@ -68,8 +125,9 @@ for pod in $(kubectl -n $NS get pods -l job-name=clients -o name); do
   kubectl -n $NS logs "$pod" > "$OUT/client-$idx.jsonl" || true
 done
 kubectl -n $NS get pods -o wide > "$OUT/pods.txt"
+EFFECTIVE_ACCESSES="${ACCESSES:-$(python3 -c "import re,sys; t=open(sys.argv[1]).read(); m=re.search(r'^  ACCESSES: \"(\d+)\"', t, re.M); print(m.group(1) if m else '')" "$OUT/infra.yaml")}"
 cat > "$OUT/run.json" <<EOF
-{"overlay":"$OVERLAY","rep":$REP,"start":"$START","end":"$END","job_rc":$JOB_RC,"image":"${IMAGE:-manifest}"}
+{"overlay":"$OVERLAY","rep":$REP,"start":"$START","end":"$END","job_rc":$JOB_RC,"image":"${IMAGE:-manifest}","accesses":${EFFECTIVE_ACCESSES:-null}}
 EOF
 rm -f "$OUT/infra.yaml" "$OUT/job.yaml"
 

@@ -4,16 +4,44 @@
 # dispara 7 clientes e espera. Serve para testar o transporte TCP sem Kubernetes.
 #
 # uso: scripts/local-run.sh [ACCESSES] [THINK_MIN_MS] [THINK_MAX_MS] [VARIANT] [SYNC_ENABLED]
+#      scripts/local-run.sh --accesses 20 0 0
 # ex.: scripts/local-run.sh 5 0 0            # alta contencao, 5 acessos por cliente
 #      scripts/local-run.sh 3 0 0 resolution false   # instrumentacao sem protocolo
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ACCESSES="${1:-5}"
-THINK_MIN="${2:-0}"
-THINK_MAX="${3:-0}"
-VARIANT="${4:-resolution}"
-SYNC="${5:-true}"
+ACCESSES="${ACCESSES:-}"
+POS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --accesses)
+      ACCESSES="${2:?--accesses precisa de um inteiro}"
+      shift 2 ;;
+    --accesses=*)
+      ACCESSES="${1#--accesses=}"
+      shift ;;
+    -h|--help)
+      sed -n '2,9p' "$0"
+      exit 0 ;;
+    --)
+      shift
+      POS+=("$@")
+      break ;;
+    -*)
+      echo "flag desconhecida: $1 (esperado: --accesses N)" >&2
+      exit 1 ;;
+    *)
+      POS+=("$1")
+      shift ;;
+  esac
+done
+n=${#POS[@]}
+[ -z "$ACCESSES" ] && [ "$n" -ge 1 ] && ACCESSES="${POS[0]}"
+ACCESSES="${ACCESSES:-5}"
+THINK_MIN=0;           [ "$n" -ge 2 ] && THINK_MIN="${POS[1]}"
+THINK_MAX=0;           [ "$n" -ge 3 ] && THINK_MAX="${POS[2]}"
+VARIANT=resolution;    [ "$n" -ge 4 ] && VARIANT="${POS[3]}"
+SYNC=true;             [ "$n" -ge 5 ] && SYNC="${POS[4]}"
 JAR=target/maekawa.jar
 OUT="${OUT:-logs/local/$(date +%Y%m%d-%H%M%S)}"
 JVM_OPTS="-XX:+UseSerialGC -Xmx96m -XX:TieredStopAtLevel=1"

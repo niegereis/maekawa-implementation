@@ -62,8 +62,8 @@
   "protocol_per_entry": 12.02,
   "acquire_wait_ms": {
     "n": 140,
-    "median": 3643.2,
-    "p90": 4444.5,
-    "max": 5516.7
+    "median": 3784.2,
+    "p90": 4467.3,
+    "max": 4805.2
   }
 }

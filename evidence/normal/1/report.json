@@ -50,20 +50,20 @@
     "missing_committed": []
   },
   "protocol_messages": {
-    "FAILED": 193,
-    "INQUIRE": 20,
-    "LOCKED": 431,
+    "FAILED": 212,
+    "INQUIRE": 25,
+    "LOCKED": 437,
     "RELEASE": 420,
-    "RELINQUISH": 11,
+    "RELINQUISH": 17,
     "REQUEST": 420
   },
-  "protocol_total": 1495,
+  "protocol_total": 1531,
   "entries": 140,
-  "protocol_per_entry": 10.68,
+  "protocol_per_entry": 10.94,
   "acquire_wait_ms": {
     "n": 140,
-    "median": 739.4,
-    "p90": 1877.6,
-    "max": 3593.1
+    "median": 862.2,
+    "p90": 2038.0,
+    "max": 3539.1
   }
 }
