@@ -106,7 +106,3 @@ terraform -chdir=infra/oci destroy
 | Boot 50 GiB | US$ 0 (dentro de 200 GiB) |
 | IPv4 público da VNIC | US$ 0 |
 | OKE, LB, NAT gateway extra, shape maior, outra região | **cobraria** — não criamos |
-
-## Azure (arquivo)
-
-`infra/azure/` guarda o Bicep do AKS que o grupo chegou a esboçar. Não é o caminho do trabalho: a assinatura de estudante não tinha crédito utilizável para o nó do AKS.

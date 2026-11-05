@@ -28,7 +28,7 @@ variable "ad_index" {
 variable "shape" {
   type        = string
   default     = "VM.Standard.A1.Flex"
-  description = "Único shape Ampere Always Free. Não trocar para E2.1.Micro."
+  description = "Always Free: VM.Standard.A1.Flex. Sem estoque Ampere: VM.Standard.E4.Flex (trial). Não usar E2.1.Micro."
 }
 
 variable "ocpus" {
