@@ -22,6 +22,8 @@ public final class Requester {
     private State state = State.IDLE;
     private Request current;
     private final Set<Integer> votes = new TreeSet<>();
+    /** Chegou FAILED neste pedido. O artigo cita o flag na regra do INQUIRE; aqui a
+     *  decisão é só "já tem quórum?" (estado CRITICAL), então o flag não muda o fluxo. */
     private boolean failed;
 
     public Requester(int pid, Set<Integer> voters, Outbox out) {
@@ -74,8 +76,8 @@ public final class Requester {
     }
 
     /**
-     * Um votante pergunta se cedemos o voto dele. Cede quem ainda nao tem o quorum;
-     * quem ja esta na secao critica nao cede, e o voto volta so no RELEASE.
+     * Um votante pergunta se cedemos o voto dele. Cede quem ainda nao esta em CRITICAL
+     * (quorum incompleto). Quem ja tem os K votos nao cede; o voto volta so no RELEASE.
      * @return true se cedeu
      */
     public boolean onInquire(int from, RequestId id) {

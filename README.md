@@ -9,7 +9,7 @@ Um **observador** registra BEGIN/END, confirma o registro (`BEGIN_ACK`/`END_ACK`
 
 O Kubernetes só orquestra (nomes estáveis, subida, logs). Nenhum `Lease`, lock do etcd ou serviço de nuvem entra na sincronização.
 
-Documentos: [plano](notes/plano-maekawa-a6.md) · [protocolo](docs/protocolo.md) · [diagramas](docs/diagrama-processo.excalidraw) (abrir em excalidraw.com).
+Documentos: [plano](notes/plano-maekawa-a6.md) · [protocolo](docs/protocolo.md) · [estados do protocolo](docs/diagrama-processo.excalidraw) · [fluxo do código](docs/fluxo-implementacao.excalidraw) (abrir em excalidraw.com).
 
 ## Versões
 
@@ -64,7 +64,9 @@ Portas: `localhost:7200..7206` e observador `:7300` (`BASE` muda a base; a 7000 
 scripts/kind-up.sh                         # cria o cluster, build da imagem, kind load, apply k8s/base
 IMAGE=maekawa:dev scripts/run-experiment.sh sem-protocolo 1
 IMAGE=maekawa:dev scripts/run-experiment.sh deadlock 1
+IMAGE=maekawa:dev scripts/run-experiment.sh normal 1 --accesses 30   # 10-50 por cliente; default do overlay
 IMAGE=maekawa:dev scripts/run-suite.sh      # 1+1+3+3+1; copia report.json para evidence/
+IMAGE=maekawa:dev scripts/run-suite.sh --accesses 10
 ```
 
 ### Oracle Cloud Always Free (k3s numa VM Ampere)
@@ -99,7 +101,7 @@ O verificador falha se: rodada normal tiver violação ou pedido sem COMMITTED; 
 | Overlay | O que mostra |
 |---|---|
 | `sem-protocolo` | `SYNC_ENABLED=false`: o observador acusa sobreposição (a instrumentação enxerga) |
-| `deadlock` | versão básica, 3 pedidos simultâneos, gate segura 3 REQUESTs por 3 s: ninguém entra, Job falha de propósito |
+| `deadlock` | versão básica, 3 pedidos simultâneos, gate segura 3 REQUESTs por 20 s (a partir da primeira mensagem retida): ninguém entra, Job falha de propósito |
 | `normal` ×3 | 20 acessos por cliente, pausa 1–5 s, zero violação |
 | `alta-contencao` ×3 | sem pausa; aparecem FAILED, INQUIRE, RELINQUISH |
 | `desigual` | client-0 sem pausa, demais normais; distribuição de espera |

@@ -3,10 +3,31 @@
 # 3 carga normal, 3 alta contenção, 1 desigual. Copia os report.json para evidence/.
 #
 # uso: IMAGE=maekawa:dev scripts/run-suite.sh
+#      IMAGE=maekawa:dev scripts/run-suite.sh --accesses 30
+#      ACCESSES=10 IMAGE=maekawa:dev scripts/run-suite.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMAGE="${IMAGE:-}"
 export IMAGE
+
+ACCESSES="${ACCESSES:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --accesses)
+      ACCESSES="${2:?--accesses precisa de um inteiro}"
+      shift 2 ;;
+    --accesses=*)
+      ACCESSES="${1#--accesses=}"
+      shift ;;
+    -h|--help)
+      sed -n '2,8p' "$0"
+      exit 0 ;;
+    *)
+      echo "argumento extra: $1 (esperado: --accesses N)" >&2
+      exit 1 ;;
+  esac
+done
+export ACCESSES
 
 fail=0
 run() {
