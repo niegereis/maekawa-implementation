@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maekawa — sete nós</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #14181f;
+      --panel: #1c222c;
+      --line: #2c3544;
+      --text: #e7ecf3;
+      --muted: #9aa6b6;
+      --amber: #e6b450;
+      --danger: #e06c75;
+      --ok: #8fbc8f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.4 system-ui, sans-serif;
+    }
+    header, main { padding: 16px 20px; }
+    header { border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+    h1 { font-size: 20px; font-weight: 500; margin: 0 0 4px; }
+    p { margin: 0; color: var(--muted); }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
+    .stage, .side { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+    .stage { padding: 8px; }
+    svg { width: 100%; height: auto; display: block; }
+    .quorum { fill: none; stroke: #3d4b60; stroke-width: 1.5; }
+    .quorum.on { stroke: var(--amber); stroke-width: 2.5; }
+    .node-label { font: 600 16px system-ui, sans-serif; fill: #10141a; }
+    .node-sub { font: 11px system-ui, sans-serif; fill: var(--muted); }
+    .side { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 13px; }
+    select, button, input[type="range"] { font: inherit; }
+    select, button { background: #11151c; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+    button { cursor: pointer; }
+    button[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+    .stat b { display: block; font-size: 20px; font-weight: 500; }
+    .stat.bad b { color: var(--danger); }
+    .banner { display: none; background: #3a2226; color: #ffd0d4; border-radius: 6px; padding: 8px 10px; }
+    .banner.show { display: block; }
+    #tape { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; }
+    #tape li { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+    #tape li.now { color: var(--text); }
+    .note { color: var(--muted); font-size: 12px; }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Sete nós — plano de Fano</h1>
+      <p>Replay de LOCKED, RELEASE, BEGIN e END. A linha acesa é o conjunto de quem está em R.</p>
+    </div>
+    <p id="source">nenhuma rodada</p>
+  </header>
+  <main>
+    <section class="stage" aria-label="Plano de Fano">
+      <svg viewBox="0 0 640 520" role="img">
+        <title>Sete processos e os conjuntos de votação</title>
+        <g id="lines"></g>
+        <g id="nodes"></g>
+      </svg>
+    </section>
+    <aside class="side">
+      <label>Rodada
+        <select id="run"></select>
+      </label>
+      <label>Arquivos .jsonl
+        <input id="files" type="file" accept=".jsonl,application/json" multiple>
+      </label>
+      <div class="row">
+        <button id="play" type="button" aria-pressed="false">Reproduzir</button>
+        <button id="back" type="button">Passo −</button>
+        <button id="step" type="button">Passo +</button>
+      </div>
+      <label>Velocidade
+        <select id="speed">
+          <option value="1">1×</option>
+          <option value="4" selected>4×</option>
+          <option value="16">16×</option>
+          <option value="64">64×</option>
+        </select>
+      </label>
+      <label class="row"><input id="skip" type="checkbox" checked> Pular esperas longas</label>
+      <label>Posição
+        <input id="scrub" type="range" min="-1" value="-1" max="-1">
+      </label>
+      <div class="stats">
+        <div class="stat"><span>Em R</span><b id="inr">0</b></div>
+        <div class="stat" id="violbox"><span>Violações</span><b id="viol">0</b></div>
+      </div>
+      <div id="banner" class="banner" role="status"></div>
+      <div id="now" class="note">antes do primeiro evento</div>
+      <ol id="tape" aria-label="Eventos recentes"></ol>
+      <p class="note">Espaço pausa. Setas andam um evento. O exemplo sintético não é a suíte da Oracle.</p>
+    </aside>
+  </main>
+  <script src="/replay.js"></script>
+  <script>
+    const POINTS = {
+      0: [320, 48],
+      1: [204, 249],
+      2: [88, 450],
+      3: [436, 249],
+      4: [552, 450],
+      5: [320, 450],
+      6: [320, 316]
+    };
+    const COLORS = ["#e6b450", "#7eb6ff", "#8fbc8f", "#f0a3c2", "#c9b3e0", "#f0b27a", "#f0a090"];
+    const LINES = [
+      [0, 1, 2],
+      [0, 3, 4],
+      [2, 5, 4],
+      [0, 6, 5],
+      [2, 6, 3],
+      [1, 6, 4]
+    ];
+    const R = window.MaekawaReplay;
+    const linesEl = document.getElementById("lines");
+    const nodesEl = document.getElementById("nodes");
+    const runSel = document.getElementById("run");
+    const scrub = document.getElementById("scrub");
+    const playBtn = document.getElementById("play");
+
+    let events = [];
+    let index = -1;
+    let timer = null;
+
+    function drawStatic() {
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("class", "quorum");
+      circle.setAttribute("data-set", "1,3,5");
+      circle.setAttribute("cx", "320");
+      circle.setAttribute("cy", "316");
+      circle.setAttribute("r", "134");
+      linesEl.appendChild(circle);
+      for (const ids of LINES) {
+        const [a, b, c] = ids;
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        path.setAttribute("class", "quorum");
+        path.setAttribute("data-set", ids.join(","));
+        path.setAttribute("points", [a, b, c].map((id) => POINTS[id].join(",")).join(" "));
+        linesEl.appendChild(path);
+      }
+      for (let i = 0; i < 7; i++) {
+        const [x, y] = POINTS[i];
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("id", "p" + i);
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("cx", x);
+        c.setAttribute("cy", y);
+        c.setAttribute("r", "26");
+        c.setAttribute("fill", "#d5dbe3");
+        c.setAttribute("stroke", "#10141a");
+        c.setAttribute("stroke-width", "2");
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("class", "node-label");
+        t.setAttribute("x", x);
+        t.setAttribute("y", y + 5);
+        t.setAttribute("text-anchor", "middle");
+        t.textContent = String(i);
+        const sub = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        sub.setAttribute("class", "node-sub");
+        sub.setAttribute("x", x);
+        sub.setAttribute("y", y + 44);
+        sub.setAttribute("text-anchor", "middle");
+        g.append(c, t, sub);
+        nodesEl.appendChild(g);
+      }
+    }
+
+    const SETS = [[0,1,2],[1,3,5],[2,3,6],[0,3,4],[2,4,5],[0,5,6],[1,4,6]];
+
+    function render() {
+      const state = index < 0 ? R.initialState() : R.at(events, index);
+      document.querySelectorAll(".quorum").forEach((el) => {
+        const ids = el.getAttribute("data-set").split(",").map(Number).sort((a, b) => a - b);
+        const on = state.inR.some((inside, pid) => {
+          if (!inside) return false;
+          const s = SETS[pid].slice().sort((a, b) => a - b);
+          return s.join() === ids.join();
+        });
+        el.classList.toggle("on", on);
+      });
+      for (let i = 0; i < 7; i++) {
+        const g = document.getElementById("p" + i);
+        const circle = g.querySelector("circle");
+        const sub = g.querySelector(".node-sub");
+        const holder = state.vote[i];
+        circle.setAttribute("fill", state.inR[i] ? COLORS[i] : "#d5dbe3");
+        circle.setAttribute("stroke", holder == null ? "#10141a" : COLORS[holder]);
+        circle.setAttribute("stroke-width", state.inR[i] ? "5" : "3");
+        if (state.inR[i]) sub.textContent = "em R " + (state.held[i] || "");
+        else if (holder != null) sub.textContent = "voto → " + holder;
+        else if (state.requesting[i]) sub.textContent = "pedindo";
+        else sub.textContent = "livre";
+      }
+      const n = state.inR.filter(Boolean).length;
+      document.getElementById("inr").textContent = String(n);
+      document.getElementById("viol").textContent = String(state.violations);
+      document.getElementById("violbox").classList.toggle("bad", state.violations > 0);
+      const banner = document.getElementById("banner");
+      banner.classList.toggle("show", state.overlap);
+      banner.textContent = state.overlap ? "Sobreposição: mais de um processo em R." : "";
+      const ev = events[index];
+      document.getElementById("now").textContent = ev
+        ? `${index + 1}/${events.length}  ${describe(ev)}`
+        : "antes do primeiro evento";
+      scrub.max = String(events.length - 1);
+      scrub.value = String(index);
+      const tape = document.getElementById("tape");
+      tape.replaceChildren();
+      const from = Math.max(0, index - 6);
+      for (let i = from; i <= index && i < events.length; i++) {
+        const li = document.createElement("li");
+        if (i === index) li.className = "now";
+        li.textContent = describe(events[i]);
+        tape.appendChild(li);
+      }
+    }
+
+    function describe(e) {
+      const id = e.request_id ? ` ${e.request_id.client_id}.${e.request_id.seq}` : "";
+      if (e.event === "BEGIN" || e.event === "END") return `${e.event} ${e.from || ""}${id}`;
+      if (e.event === "VIOLATION") return `VIOLATION active=${e.active}`;
+      return `${e.event} ${e.process || ""} → ${e.peer || ""}${id}`;
+    }
+
+    function stop() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      playBtn.setAttribute("aria-pressed", "false");
+      playBtn.textContent = "Reproduzir";
+    }
+
+    function arm(nextIndex) {
+      index = Math.max(-1, Math.min(nextIndex, events.length - 1));
+      render();
+    }
+
+    function schedule() {
+      if (playBtn.getAttribute("aria-pressed") !== "true") return;
+      if (index >= events.length - 1) { stop(); return; }
+      const a = Date.parse(events[Math.max(index, 0)].wall_clock || 0);
+      const b = Date.parse(events[index + 1].wall_clock || a);
+      let gap = Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : 400;
+      if (document.getElementById("skip").checked && gap > 1200) gap = 160;
+      const speed = Number(document.getElementById("speed").value) || 1;
+      timer = setTimeout(() => { arm(index + 1); schedule(); }, gap / speed);
+    }
+
+    function setEvents(list, label) {
+      stop();
+      events = list.slice().sort((a, b) => String(a.wall_clock || "").localeCompare(String(b.wall_clock || "")));
+      events = events.filter(R.keep);
+      index = -1;
+      document.getElementById("source").textContent = `${label} · ${events.length} eventos`;
+      render();
+    }
+
+    async function loadRun(id) {
+      const res = await fetch("/api/events?run=" + encodeURIComponent(id));
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json();
+      const synthetic = id === "exemplo" ? "exemplo sintético" : id;
+      setEvents(body.events || [], synthetic);
+    }
+
+    playBtn.addEventListener("click", () => {
+      const on = playBtn.getAttribute("aria-pressed") === "true";
+      if (on) { stop(); return; }
+      if (index >= events.length - 1) arm(-1);
+      playBtn.setAttribute("aria-pressed", "true");
+      playBtn.textContent = "Pausar";
+      schedule();
+    });
+    document.getElementById("step").addEventListener("click", () => { stop(); arm(index + 1); });
+    document.getElementById("back").addEventListener("click", () => { stop(); arm(index - 1); });
+    scrub.addEventListener("input", () => { stop(); arm(Number(scrub.value)); });
+    runSel.addEventListener("change", () => loadRun(runSel.value).catch((err) => {
+      document.getElementById("source").textContent = String(err);
+    }));
+    document.getElementById("files").addEventListener("change", async (ev) => {
+      const parsed = [];
+      for (const file of ev.target.files) {
+        const text = await file.text();
+        for (const line of text.split(/\n/)) {
+          if (!line.startsWith("{")) continue;
+          try { parsed.push(JSON.parse(line)); } catch { /* linha inválida */ }
+        }
+      }
+      setEvents(parsed, "arquivos locais");
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.target.matches("input, select, textarea")) return;
+      if (ev.code === "Space") { ev.preventDefault(); playBtn.click(); }
+      if (ev.code === "ArrowRight") { stop(); arm(index + 1); }
+      if (ev.code === "ArrowLeft") { stop(); arm(index - 1); }
+    });
+
+    drawStatic();
+    render();
+    fetch("/api/runs").then((r) => r.json()).then((runs) => {
+      runSel.replaceChildren();
+      for (const run of runs) {
+        const opt = document.createElement("option");
+        opt.value = run.id;
+        opt.textContent = run.label;
+        runSel.appendChild(opt);
+      }
+      if (runs.length) return loadRun(runs[0].id);
+      document.getElementById("source").textContent = "sem logs/ — escolha arquivos .jsonl";
+    }).catch(() => {
+      document.getElementById("source").textContent = "abra por scripts/viz.sh para listar as rodadas";
+    });
+  </script>
+</body>
+</html>
