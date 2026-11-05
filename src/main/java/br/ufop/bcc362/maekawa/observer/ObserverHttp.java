@@ -20,7 +20,8 @@ import java.util.concurrent.Executors;
  *
  * GET  /mode     modo atual, epoca e quantos nos confirmaram
  * POST /mode     {"sync_enabled": false} (ou ?sync_enabled=false) liga/desliga o Maekawa nos N nos;
- *                {"cs_min_ms": 2000, "cs_max_ms": 4000} troca a duracao da secao critica simulada.
+ *                {"cs_min_ms": 2000, "cs_max_ms": 4000} troca a duracao da secao critica simulada;
+ *                {"think_min_ms": 500, "think_max_ms": 1500} troca a pausa entre pedidos dos clientes.
  *                Os dois podem ir juntos; pelo menos um e obrigatorio.
  * GET  /stats    contadores do observador (total e por epoca) mais o modo
  * POST /reset    zera os contadores (violacoes, BEGIN/END, maximo em R, por epoca); devolve /stats
@@ -77,8 +78,8 @@ public final class ObserverHttp implements AutoCloseable {
                     send(ex, 400, Map.of("error", e.getMessage()));
                     return;
                 }
-                if (c.sync == null && c.csMin == null) {
-                    send(ex, 400, Map.of("error", "informe sync_enabled (true|false) e/ou cs_min_ms + cs_max_ms"));
+                if (c.sync == null && c.csMin == null && c.thinkMin == null) {
+                    send(ex, 400, Map.of("error", "informe sync_enabled, cs_min_ms + cs_max_ms e/ou think_min_ms + think_max_ms"));
                     return;
                 }
                 try {
@@ -87,9 +88,14 @@ public final class ObserverHttp implements AutoCloseable {
                         throw new IllegalArgumentException("secao critica invalida: precisa 0 <= cs_min_ms <= cs_max_ms <= "
                                 + Observer.CS_LIMIT_MS);
                     }
+                    if (c.thinkMin != null && (c.thinkMin < 0 || c.thinkMax < c.thinkMin || c.thinkMax > Observer.CS_LIMIT_MS)) {
+                        throw new IllegalArgumentException("pausa invalida: precisa 0 <= think_min_ms <= think_max_ms <= "
+                                + Observer.CS_LIMIT_MS);
+                    }
                     Map<String, Object> status = null;
                     if (c.sync != null) status = observer.setSyncEnabled(c.sync);
                     if (c.csMin != null) status = observer.setCriticalSection(c.csMin, c.csMax);
+                    if (c.thinkMin != null) status = observer.setThink(c.thinkMin, c.thinkMax);
                     send(ex, 200, status);
                 } catch (IllegalArgumentException e) {
                     send(ex, 400, Map.of("error", e.getMessage()));
@@ -114,7 +120,7 @@ public final class ObserverHttp implements AutoCloseable {
         return body;
     }
 
-    private record Change(Boolean sync, Long csMin, Long csMax) {
+    private record Change(Boolean sync, Long csMin, Long csMax, Long thinkMin, Long thinkMax) {
     }
 
     /**
@@ -150,7 +156,10 @@ public final class ObserverHttp implements AutoCloseable {
         String min = field(q, body, "cs_min_ms"), max = field(q, body, "cs_max_ms");
         if ((min == null) != (max == null)) throw new IllegalArgumentException("informe cs_min_ms e cs_max_ms juntos");
         Long csMin = min == null ? null : parseMs(min), csMax = max == null ? null : parseMs(max);
-        return new Change(sync, csMin, csMax);
+        String tmin = field(q, body, "think_min_ms"), tmax = field(q, body, "think_max_ms");
+        if ((tmin == null) != (tmax == null)) throw new IllegalArgumentException("informe think_min_ms e think_max_ms juntos");
+        Long thinkMin = tmin == null ? null : parseMs(tmin), thinkMax = tmax == null ? null : parseMs(tmax);
+        return new Change(sync, csMin, csMax, thinkMin, thinkMax);
     }
 
     private static String field(Map<String, String> q, JsonNode body, String... names) {

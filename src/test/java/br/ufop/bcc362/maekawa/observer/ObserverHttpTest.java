@@ -50,6 +50,11 @@ class ObserverHttpTest {
                 assertEquals(1500, cs.get("cs_min_ms").asLong());
                 assertEquals(3000, cs.get("cs_max_ms").asLong());
                 assertEquals(2, cs.get("epoch").asLong(), "secao critica nao abre epoca");
+                JsonNode th = post(base + "/mode", "{\"think_min_ms\": 500, \"think_max_ms\": 1500}", 200);
+                assertEquals(500, th.get("think_min_ms").asLong());
+                assertEquals(1500, th.get("think_max_ms").asLong());
+                post(base + "/mode", "{\"think_min_ms\": 500}", 400);
+                post(base + "/mode", "{\"think_min_ms\": 900, \"think_max_ms\": 100}", 400);
                 post(base + "/mode", "{\"cs_min_ms\": 1500}", 400);
                 post(base + "/mode", "{\"cs_min_ms\": 3000, \"cs_max_ms\": 1000}", 400);
                 post(base + "/mode", "{\"cs_min_ms\": 0, \"cs_max_ms\": 999999}", 400);

@@ -99,8 +99,29 @@ def main():
                 entries += 1
     protocol_total = sum(sent.values())
 
+    # --- configuracao: o que cada processo registrou no START (N, K, secao critica, pausa, semente)
+    def start_of(evs):
+        return next((e for e in evs if e.get("event") == "START"), {})
+    node_starts = {os.path.basename(p).replace(".jsonl", ""): start_of(evs) for p, evs in nodes.items()}
+    client_starts = {os.path.basename(p).replace(".jsonl", ""): start_of(evs) for p, evs in clients.items()}
+    any_node = next((s for s in node_starts.values() if s), {})
+    any_client = next((s for s in client_starts.values() if s), {})
+    k = len(any_node.get("voters") or []) or None
+    n_nodes = any_node.get("n_nodes") or len(nodes)
+    config = {
+        "nodes": n_nodes,
+        "clients": len(clients),
+        "k": k,
+        "variant": any_node.get("variant"),
+        "cs_ms": [any_node.get("cs_min_ms"), any_node.get("cs_max_ms")],
+        "think_ms": [any_client.get("think_min_ms"), any_client.get("think_max_ms")],
+        "accesses_per_client": any_client.get("accesses"),
+        "seeds": {name: s.get("seed") for name, s in {**node_starts, **client_starts}.items()},
+    }
+
     report = {
         "expect": expect,
+        "config": config,
         "observer": {"begins": begins, "ends": ends, "max_active": max_active, "violations": violations},
         "clients": per_client,
         "requests": {"requested": len(requested_ids), "committed": len(committed_ids),

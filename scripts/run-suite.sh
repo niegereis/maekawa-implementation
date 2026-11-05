@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Suite oficial no cluster atual (kind ou k3s na Oracle): 1 sem-protocolo, 1 deadlock,
-# 3 carga normal, 3 alta contenção, 1 desigual. Copia os report.json para evidence/.
+# 3 carga normal, 3 alta contenção, 1 desigual, 3 normal-4 (4 nós: quantidade de participantes,
+# compara com a normal de 7). normal-13 (13 nós) é opcional: scripts/run-experiment.sh normal-13 1.
+# Copia os report.json e run.json (com a semente) para evidence/.
 #
 # uso: IMAGE=maekawa:dev scripts/run-suite.sh
 #      IMAGE=maekawa:dev scripts/run-suite.sh --accesses 30
@@ -45,6 +47,7 @@ run deadlock 1
 for r in 1 2 3; do run normal $r; done
 for r in 1 2 3; do run alta-contencao $r; done
 run desigual 1
+for r in 1 2 3; do run normal-4 $r; done    # quantidade de participantes: 4 nos x normal (7)
 
 mkdir -p evidence
 {
@@ -55,7 +58,7 @@ mkdir -p evidence
   echo
 } > evidence/README.md
 
-for overlay in sem-protocolo deadlock normal alta-contencao desigual; do
+for overlay in sem-protocolo deadlock normal alta-contencao desigual normal-4 normal-13; do
   for rep in 1 2 3; do
     src="logs/$overlay/$rep/report.json"
     [ -f "$src" ] || continue

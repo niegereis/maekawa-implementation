@@ -19,6 +19,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *                  epoca em que o pedido foi admitido no no
  * @param csMinMs   duracao minima da secao critica (so em MODE / MODE_ACK; null = nao mexe)
  * @param csMaxMs   duracao maxima da secao critica (idem)
+ * @param thinkMinMs pausa minima entre pedidos do cliente (MODE, MODE_ACK e COMMITTED; null = nao mexe)
+ * @param thinkMaxMs pausa maxima entre pedidos do cliente (idem)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record Message(@JsonProperty("type") MessageType type,
@@ -31,33 +33,39 @@ public record Message(@JsonProperty("type") MessageType type,
                       @JsonProperty("sync_enabled") Boolean syncEnabled,
                       @JsonProperty("epoch") Long epoch,
                       @JsonProperty("cs_min_ms") Long csMinMs,
-                      @JsonProperty("cs_max_ms") Long csMaxMs) {
+                      @JsonProperty("cs_max_ms") Long csMaxMs,
+                      @JsonProperty("think_min_ms") Long thinkMinMs,
+                      @JsonProperty("think_max_ms") Long thinkMaxMs) {
 
     @JsonCreator
     public Message {
     }
 
     public static Message of(MessageType type, String from, String to, long lamport, RequestId requestId) {
-        return new Message(type, from, to, lamport, requestId, null, null, null, null, null, null);
+        return new Message(type, from, to, lamport, requestId, null, null, null, null, null, null, null, null);
     }
 
     public Message withPriority(Priority p) {
-        return new Message(type, from, to, lamport, requestId, p, processId, syncEnabled, epoch, csMinMs, csMaxMs);
+        return new Message(type, from, to, lamport, requestId, p, processId, syncEnabled, epoch, csMinMs, csMaxMs, thinkMinMs, thinkMaxMs);
     }
 
     public Message withProcessId(int pid) {
-        return new Message(type, from, to, lamport, requestId, priority, pid, syncEnabled, epoch, csMinMs, csMaxMs);
+        return new Message(type, from, to, lamport, requestId, priority, pid, syncEnabled, epoch, csMinMs, csMaxMs, thinkMinMs, thinkMaxMs);
     }
 
     public Message withMode(boolean sync, long ep) {
-        return new Message(type, from, to, lamport, requestId, priority, processId, sync, ep, csMinMs, csMaxMs);
+        return new Message(type, from, to, lamport, requestId, priority, processId, sync, ep, csMinMs, csMaxMs, thinkMinMs, thinkMaxMs);
     }
 
     public Message withEpoch(long ep) {
-        return new Message(type, from, to, lamport, requestId, priority, processId, syncEnabled, ep, csMinMs, csMaxMs);
+        return new Message(type, from, to, lamport, requestId, priority, processId, syncEnabled, ep, csMinMs, csMaxMs, thinkMinMs, thinkMaxMs);
+    }
+
+    public Message withThink(Long min, Long max) {
+        return new Message(type, from, to, lamport, requestId, priority, processId, syncEnabled, epoch, csMinMs, csMaxMs, min, max);
     }
 
     public Message withCriticalSection(Long min, Long max) {
-        return new Message(type, from, to, lamport, requestId, priority, processId, syncEnabled, epoch, min, max);
+        return new Message(type, from, to, lamport, requestId, priority, processId, syncEnabled, epoch, min, max, thinkMinMs, thinkMaxMs);
     }
 }

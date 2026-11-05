@@ -22,12 +22,16 @@ import java.util.function.Function;
  * Variaveis comuns:
  *   PEER_ADDR_PATTERN  endereco do no i, com %d  (padrao "sync-%d.sync:7000"; local: "localhost:70%02d")
  *   OBSERVER_ADDR      (padrao "observer:7100")
+ *   N_NODES            7 (Fano, K=3) ou 13 (plano projetivo de ordem 3, K=4); nos e observador
+ *   RANDOM_SEED        semente base; no i usa RANDOM_SEED + i, cliente i usa RANDOM_SEED + 1000 + i.
+ *                      Vazia: sorteada na subida. Em todo caso vai no evento START de cada processo.
  *
  * node:     PROCESS_ID (ou HOSTNAME sync-i), LISTEN_PORT=7000, VARIANT=basic|resolution,
  *           SYNC_ENABLED=true|false (modo inicial; o observador pode trocar em tempo de execucao),
  *           CS_MIN_MS=200, CS_MAX_MS=1000,
  *           GATE_HOLD="REQUEST:sync-0>sync-1,...", GATE_RELEASE_AFTER_MS=3000
- * client:   CLIENT_ID (ou JOB_COMPLETION_INDEX), TARGET=sync-<id>, ACCESSES=20 (0 = continuo, sem fim),
+ * client:   CLIENT_ID (ou JOB_COMPLETION_INDEX), TARGET=sync-<id>, ACCESSES=20,
+ *           CONTINUOUS=false (true = pede sem parar e ignora ACCESSES; o ConfigMap base liga),
  *           THINK_MIN_MS=1000, THINK_MAX_MS=5000, START_DELAY_MS=0, REQUEST_TIMEOUT_MS=60000.
  *           Qualquer um desses quatro aceita a forma X_BY_CLIENT="v0,v1,...,v6" para carga desigual
  *           (ex.: ACCESSES_BY_CLIENT="1,1,1,0,0,0,0" no cenario de deadlock).
@@ -56,14 +60,15 @@ public final class Main {
         NodeConfig cfg = NodeConfig.defaults(pid)
                 .withVariant(Variant.parse(env("VARIANT", "resolution")))
                 .withSyncEnabled(envBool("SYNC_ENABLED", true))
-                .withCriticalSection(envLong("CS_MIN_MS", 200), envLong("CS_MAX_MS", 1000));
+                .withCriticalSection(envLong("CS_MIN_MS", 200), envLong("CS_MAX_MS", 1000))
+                .withSeed(baseSeed() + pid);
 
         // O gate (so no perfil deadlock) segura REQUESTs escolhidos e abre GATE_RELEASE_AFTER_MS depois
         // de segurar o primeiro; assim o ciclo se forma mesmo que os clientes cheguem com segundos de diferenca.
         DeliveryGate gate = DeliveryGate.parse(env("GATE_HOLD", ""));
         TcpTransport transport = new TcpTransport(NodeConfig.nodeName(pid), envInt("LISTEN_PORT", 7000), resolver(), gate,
                 gate.isEmpty() ? 0 : envLong("GATE_RELEASE_AFTER_MS", 3000));
-        Node node = new Node(cfg, Quorum.fano(), transport);
+        Node node = new Node(cfg, Quorum.forSize(envInt("N_NODES", 7)), transport);
         node.start();
 
         Runtime.getRuntime().addShutdownHook(new Thread(node::close));
@@ -79,7 +84,9 @@ public final class Main {
                 perClient("THINK_MIN_MS", id, 1000),
                 perClient("THINK_MAX_MS", id, 5000),
                 perClient("START_DELAY_MS", id, 0),
-                envLong("REQUEST_TIMEOUT_MS", 60_000));
+                envLong("REQUEST_TIMEOUT_MS", 60_000),
+                envBool("CONTINUOUS", false),
+                baseSeed() + 1000 + id);
         TcpTransport transport = new TcpTransport("client-" + id, 0, resolver(), null);
         try (Client client = new Client(cfg, transport)) {
             client.run();
@@ -90,7 +97,7 @@ public final class Main {
     private static void runObserver() throws Exception {
         TcpTransport transport = new TcpTransport("observer", envInt("LISTEN_PORT", 7100), resolver(), null);
         Observer observer = new Observer(transport, new EventLog(Observer.NAME, null),
-                Quorum.fano().size(), envBool("SYNC_ENABLED", true));
+                Quorum.forSize(envInt("N_NODES", 7)).size(), envBool("SYNC_ENABLED", true));
         observer.start();
         int httpPort = envInt("HTTP_PORT", 8080);
         ObserverHttp http = null;
@@ -137,6 +144,12 @@ public final class Main {
 
     private static long envLong(String k, long def) {
         return Long.parseLong(env(k, Long.toString(def)));
+    }
+
+    /** RANDOM_SEED, ou uma semente sorteada na subida (que o START registra). */
+    private static long baseSeed() {
+        String s = env("RANDOM_SEED", "");
+        return s.isEmpty() ? new java.security.SecureRandom().nextInt(1_000_000_000) : Long.parseLong(s);
     }
 
     private static boolean envBool(String k, boolean def) {

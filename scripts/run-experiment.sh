@@ -4,7 +4,8 @@
 #
 # uso: scripts/run-experiment.sh <overlay> [rep] [--accesses N]
 #      ACCESSES=N scripts/run-experiment.sh <overlay> [rep]
-# overlay em k8s/overlays/: sem-protocolo | deadlock | normal | alta-contencao | desigual
+# overlay em k8s/overlays/: sem-protocolo | deadlock | normal | alta-contencao | desigual | normal-4 | normal-13
+# RANDOM_SEED fixa a semente da rodada (padrao: sorteada aqui); vai para o ConfigMap e para run.json.
 # --accesses (ou ACCESSES) sobrescreve o ConfigMap da rodada (padrao do overlay: 20, 5 em sem-protocolo).
 # no overlay deadlock, ACCESSES_BY_CLIENT continua mandando (1,1,1,0,0,0,0); a flag nao muda o cenario.
 # ex.: scripts/run-experiment.sh alta-contencao 1
@@ -38,7 +39,7 @@ while [ $# -gt 0 ]; do
       shift ;;
   esac
 done
-OVERLAY="${OVERLAY:?overlay (sem-protocolo|deadlock|normal|alta-contencao|desigual)}"
+OVERLAY="${OVERLAY:?overlay (sem-protocolo|deadlock|normal|alta-contencao|desigual|normal-4|normal-13)}"
 REP="${REP:-1}"
 
 if [ -n "$ACCESSES" ]; then
@@ -74,6 +75,30 @@ is_job = lambda d: re.search(r'^kind: Job$', d, flags=re.M) is not None
 open(sys.argv[2] + '/infra.yaml', 'w').write('\n---\n'.join(d for d in docs if not is_job(d)))
 open(sys.argv[2] + '/job.yaml', 'w').write('\n---\n'.join(d for d in docs if is_job(d)))
 EOF
+
+# semente da rodada: a mesma em todos os processos (no i usa SEED+i, cliente i usa SEED+1000+i)
+SEED="${RANDOM_SEED:-$(python3 -c 'import secrets; print(secrets.randbelow(10**9))')}"
+python3 - "$OUT/infra.yaml" "$SEED" <<'PY'
+import re, sys
+path, seed = sys.argv[1], sys.argv[2]
+text = open(path).read()
+text, n = re.subn(r'(^  RANDOM_SEED: )"[^"]*"', rf'\1"{seed}"', text, flags=re.M)
+if n == 0:
+    text = re.sub(r'(^data:\n)', rf'\1  RANDOM_SEED: "{seed}"\n', text, count=1, flags=re.M)
+open(path, "w").write(text)
+PY
+echo "RANDOM_SEED=$SEED"
+
+# rodada oficial sempre termina: CONTINUOUS=false mesmo se o overlay esquecer
+python3 - "$OUT/infra.yaml" <<'PY'
+import re, sys
+path = sys.argv[1]
+text = open(path).read()
+text, n = re.subn(r'(^  CONTINUOUS: )"[^"]*"', r'\1"false"', text, flags=re.M)
+if n == 0:
+    text = re.sub(r'(^data:\n)', r'\1  CONTINUOUS: "false"\n', text, count=1, flags=re.M)
+open(path, "w").write(text)
+PY
 
 if [ -n "$ACCESSES" ]; then
   python3 - "$OUT/infra.yaml" "$ACCESSES" <<'EOF'
@@ -116,7 +141,8 @@ done
 END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # recolhe logs
-for i in 0 1 2 3 4 5 6; do
+NODES=$(kubectl -n $NS get statefulset sync -o jsonpath='{.spec.replicas}')
+for i in $(seq 0 $((NODES - 1))); do
   kubectl -n $NS logs "sync-$i" > "$OUT/sync-$i.jsonl" || true
 done
 kubectl -n $NS logs deployment/observer > "$OUT/observer.jsonl" || true
@@ -127,7 +153,7 @@ done
 kubectl -n $NS get pods -o wide > "$OUT/pods.txt"
 EFFECTIVE_ACCESSES="${ACCESSES:-$(python3 -c "import re,sys; t=open(sys.argv[1]).read(); m=re.search(r'^  ACCESSES: \"(\d+)\"', t, re.M); print(m.group(1) if m else '')" "$OUT/infra.yaml")}"
 cat > "$OUT/run.json" <<EOF
-{"overlay":"$OVERLAY","rep":$REP,"start":"$START","end":"$END","job_rc":$JOB_RC,"image":"${IMAGE:-manifest}","accesses":${EFFECTIVE_ACCESSES:-null}}
+{"overlay":"$OVERLAY","rep":$REP,"start":"$START","end":"$END","job_rc":$JOB_RC,"image":"${IMAGE:-manifest}","accesses":${EFFECTIVE_ACCESSES:-null},"nodes":$NODES,"seed":$SEED}
 EOF
 rm -f "$OUT/infra.yaml" "$OUT/job.yaml"
 

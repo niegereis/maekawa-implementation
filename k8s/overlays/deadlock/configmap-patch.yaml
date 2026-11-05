@@ -8,6 +8,7 @@ metadata:
   name: experiment
   namespace: maekawa
 data:
+  CONTINUOUS: "false"            # rodada oficial: termina e o verify.py confere
   VARIANT: "basic"
   GATE_HOLD: "REQUEST:sync-0>sync-1,REQUEST:sync-1>sync-3,REQUEST:sync-2>sync-2"
   GATE_RELEASE_AFTER_MS: "20000"

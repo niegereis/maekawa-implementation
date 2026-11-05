@@ -1,0 +1,16 @@
+# Quantidade de participantes: a mesma carga do overlay normal, com 4 nos e 4 clientes.
+# N = 4 = 2 x 2: grade, S_i = linha + coluna de p_i, K = 3 votos por entrada (2 raiz(N) - 1).
+# Compara com normal (N = 7, K = 3): espera e mensagens por entrada em funcao de N.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: experiment
+  namespace: maekawa
+data:
+  CONTINUOUS: "false"            # rodada oficial: termina e o verify.py confere
+  N_NODES: "4"
+  VARIANT: "resolution"
+  SYNC_ENABLED: "true"
+  ACCESSES: "20"
+  THINK_MIN_MS: "1000"
+  THINK_MAX_MS: "5000"

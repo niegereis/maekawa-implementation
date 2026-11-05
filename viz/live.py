@@ -191,15 +191,28 @@ class PortForward:
 
 CONTINUOUS_ANNOTATION = "maekawa-continuous"
 CLIENTS: dict = {}  # estado dos pods de clientes, atualizado a cada 2 s pelo follow_k8s
+CLUSTER: dict = {}  # N_NODES do ConfigMap e quantos sync-i estão rodando
+NODE_CHOICES = (4, 7, 13)  # N com conjuntos de votação (grade 2x2, Fano, plano de ordem 3)
 
 
 def _pods(namespace: str) -> dict[str, str]:
     """uid -> nome dos pods Running do observador e dos sync-i. Atualiza CLIENTS de passagem."""
-    out = subprocess.run(["kubectl", "-n", namespace, "get", "pods", "-o", "json"],
+    out = subprocess.run(["kubectl", "-n", namespace, "get", "pods,configmaps", "-o", "json"],
                          capture_output=True, text=True, timeout=10, check=True).stdout
+    items = json.loads(out).get("items", [])
+    # sem anotação no pod, o modo vem do ConfigMap (CONTINUOUS), como no Job do kind-up.sh
+    cfg = next((i.get("data") or {} for i in items
+                if i.get("kind") == "ConfigMap" and i.get("metadata", {}).get("name") == "experiment"), {})
+    cfg_continuous = cfg.get("CONTINUOUS") == "true"
+    try:
+        cfg_nodes = int(cfg.get("N_NODES") or 7)
+    except ValueError:
+        cfg_nodes = 7
     pods = {}
     clients = {"running": 0, "succeeded": 0, "failed": 0, "pending": 0, "continuous": False}
-    for item in json.loads(out).get("items", []):
+    for item in items:
+        if item.get("kind") != "Pod":
+            continue
         meta, phase = item.get("metadata", {}), item.get("status", {}).get("phase")
         name = meta.get("name", "")
         if meta.get("deletionTimestamp"):
@@ -207,12 +220,20 @@ def _pods(namespace: str) -> dict[str, str]:
         if (meta.get("labels") or {}).get("app") == "client":
             key = {"Running": "running", "Succeeded": "succeeded", "Failed": "failed"}.get(phase, "pending")
             clients[key] += 1
-            if (meta.get("annotations") or {}).get(CONTINUOUS_ANNOTATION) == "true":
+            ann = (meta.get("annotations") or {}).get(CONTINUOUS_ANNOTATION)
+            if ann == "true" or (ann is None and cfg_continuous):
                 clients["continuous"] = True
         elif phase == "Running" and (name.startswith("observer-") or name.startswith("sync-")):
             pods[meta["uid"]] = name
     CLIENTS.clear()
     CLIENTS.update(clients)
+    CLUSTER.clear()
+    try:
+        think = [int(cfg.get("THINK_MIN_MS") or 0), int(cfg.get("THINK_MAX_MS") or 0)]
+    except ValueError:
+        think = None
+    CLUSTER.update({"n_nodes": cfg_nodes, "sync_running": sum(1 for n in pods.values() if n.startswith("sync-")),
+                    "think": think})
     return pods
 
 
@@ -316,12 +337,15 @@ class Restarter:
     # o último Job visto, para conseguir disparar de novo depois de "Parar clientes"
     _template: dict | None = None
 
-    def start(self, continuous: bool = False) -> bool:
+    def start(self, continuous: bool = False, nodes: int | None = None) -> bool:
+        """nodes: troca o tamanho do cluster (N_NODES no ConfigMap, réplicas e Job) antes de subir."""
+        if nodes is not None and nodes not in NODE_CHOICES:
+            raise ValueError(f"nodes deve ser um de {NODE_CHOICES}")
         with self._lock:
             if self.state["running"]:
                 return False
             self.state = {"running": True, "step": "começando", "error": None, "finished_at": None}
-        threading.Thread(target=self._run, args=(continuous,), daemon=True).start()
+        threading.Thread(target=self._run, args=(continuous, nodes), daemon=True).start()
         return True
 
     def stop_clients(self) -> bool:
@@ -345,43 +369,77 @@ class Restarter:
         try:
             self._template = _clean_job(json.loads(_kubectl(self.namespace, "get", "job", "clients", "-o", "json")))
         except RuntimeError:
-            pass  # sem Job agora: fica o último lembrado
+            if self._template is None:
+                self._template = self._base_job()  # sem Job no cluster nem lembrado: o de k8s/base
+
+    def _base_job(self) -> dict | None:
+        """Job de clientes de k8s/base, com a imagem que os nós estão usando."""
+        base = Path(__file__).resolve().parent.parent / "k8s" / "base"
+        try:
+            docs = _kubectl(self.namespace, "kustomize", str(base)).split("\n---\n")
+            job_yaml = next(d for d in docs if "\nkind: Job\n" in "\n" + d + "\n")
+            job = json.loads(_kubectl(self.namespace, "create", "--dry-run=client", "-o", "json", "-f", "-",
+                                      stdin=job_yaml))
+            image = _kubectl(self.namespace, "get", "statefulset", "sync", "-o",
+                             "jsonpath={.spec.template.spec.containers[0].image}").strip()
+            if image:
+                job["spec"]["template"]["spec"]["containers"][0]["image"] = image
+            return _clean_job(job)
+        except (RuntimeError, StopIteration, ValueError):
+            return None
 
     @staticmethod
     def _as_continuous(job: dict, continuous: bool) -> dict:
-        """Modo contínuo: ACCESSES=0 no env do container (vence o ConfigMap) e anotação nos pods."""
+        """CONTINUOUS no env do container (vence o ConfigMap) e a mesma informação na anotação dos pods."""
         job = json.loads(json.dumps(job))
         tmpl = job["spec"]["template"]
         container = tmpl["spec"]["containers"][0]
-        env = [e for e in container.get("env", []) if e.get("name") not in ("ACCESSES", "ACCESSES_BY_CLIENT")]
-        ann = tmpl.setdefault("metadata", {}).setdefault("annotations", {})
-        ann.pop(CONTINUOUS_ANNOTATION, None)
-        if continuous:
-            env += [{"name": "ACCESSES", "value": "0"}, {"name": "ACCESSES_BY_CLIENT", "value": ""}]
-            ann[CONTINUOUS_ANNOTATION] = "true"
+        env = [e for e in container.get("env", []) if e.get("name") != "CONTINUOUS"]
+        env.append({"name": "CONTINUOUS", "value": "true" if continuous else "false"})
         container["env"] = env
+        ann = tmpl.setdefault("metadata", {}).setdefault("annotations", {})
+        ann[CONTINUOUS_ANNOTATION] = "true" if continuous else "false"
         return job
 
-    def _run(self, continuous: bool) -> None:
+    def _run(self, continuous: bool, nodes: int | None) -> None:
         ns = self.namespace
         try:
             self._set(step="lendo o Job de clientes")
             self._remember_job()
             if self._template is None:
-                raise RuntimeError("não há Job 'clients' para repetir; rode o run-experiment.sh uma vez")
+                raise RuntimeError("não achei o Job de clientes (nem no cluster nem em k8s/base)")
             job = self._as_continuous(self._template, continuous)
+            target = nodes if nodes is not None else int(
+                _kubectl(ns, "get", "statefulset", "sync", "-o", "jsonpath={.spec.replicas}").strip() or 7)
+            job["spec"]["completions"] = target
+            job["spec"]["parallelism"] = target
             cfg = json.loads(_kubectl(ns, "get", "configmap", "experiment", "-o", "json")).get("data", {})
             self._set(step="apagando o Job anterior")
             _kubectl(ns, "delete", "job", "clients", "--ignore-not-found", "--wait=true")
-            self._set(step="recriando nós e observador")
-            _kubectl(ns, "delete", "pod", "-l", "app=sync", "--wait=true")
+            # nós: escala para 0 e espera sumirem antes de subir de novo. Apagar os pods com o
+            # StatefulSet ativo (e mudando de tamanho) deixa o "delete --wait" esperando pods que o
+            # próprio StatefulSet recria com o mesmo nome.
+            self._set(step="parando os nós")
+            _kubectl(ns, "scale", "statefulset", "sync", "--replicas=0")
+            try:
+                _kubectl(ns, "wait", "--for=delete", "pod", "-l", "app=sync", "--timeout=120s")
+            except RuntimeError as err:
+                if "no matching resources" not in str(err):
+                    raise
+            if nodes is not None:
+                # os grupos de votação dependem de N: nós, observador e clientes sobem com o N novo
+                _kubectl(ns, "patch", "configmap", "experiment", "--type", "merge",
+                         "-p", json.dumps({"data": {"N_NODES": str(nodes)}}))
+            self._set(step=f"subindo {target} nós e o observador")
+            _kubectl(ns, "scale", "statefulset", "sync", f"--replicas={target}")
             _kubectl(ns, "delete", "pod", "-l", "app=observer", "--wait=true")
             _kubectl(ns, "rollout", "status", "statefulset/sync", "--timeout=180s")
             _kubectl(ns, "rollout", "status", "deployment/observer", "--timeout=120s")
             time.sleep(2)  # como no run-experiment.sh: o observador termina de subir a escuta
             self._set(step="disparando os clientes")
             _kubectl(ns, "create", "-f", "-", stdin=json.dumps(job))
-            keys = ("SYNC_ENABLED", "VARIANT") if continuous else ("SYNC_ENABLED", "VARIANT", "ACCESSES")
+            cfg = json.loads(_kubectl(ns, "get", "configmap", "experiment", "-o", "json")).get("data", {})
+            keys = ("N_NODES", "SYNC_ENABLED", "VARIANT") if continuous else ("N_NODES", "SYNC_ENABLED", "VARIANT", "ACCESSES")
             summary = ", ".join(f"{k}={cfg.get(k)}" for k in keys if k in cfg)
             what = "rodada contínua iniciada" if continuous else "rodada reiniciada"
             self._set(running=False, step=f"{what} ({summary})", finished_at=time.time())

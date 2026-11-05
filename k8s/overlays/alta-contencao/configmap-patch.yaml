@@ -6,6 +6,7 @@ metadata:
   name: experiment
   namespace: maekawa
 data:
+  CONTINUOUS: "false"            # rodada oficial: termina e o verify.py confere
   VARIANT: "resolution"
   SYNC_ENABLED: "true"
   ACCESSES: "20"

@@ -1,0 +1,17 @@
+# 13 nos (sync-0..sync-12) e 13 clientes (client-i fala com sync-i).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sync
+  namespace: maekawa
+spec:
+  replicas: 13
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clients
+  namespace: maekawa
+spec:
+  completions: 13
+  parallelism: 13

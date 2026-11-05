@@ -58,7 +58,8 @@ mvn test
 
 ```bash
 mvn -q -DskipTests package
-scripts/local-run.sh 5 0 0                 # 7 nós + observador + 7 clientes, 5 acessos, sem pausa
+scripts/local-run.sh                       # contínuo (padrão): 7 nós + observador + 7 clientes, até Ctrl-C
+scripts/local-run.sh 5 0 0                 # rodada finita: 5 acessos por cliente, sem pausa
 python3 scripts/verify.py logs/local/<timestamp>
 ```
 
@@ -97,7 +98,7 @@ O `verify.py` continua avaliando a rodada inteira: numa rodada `normal` em que o
 ### Kubernetes local (kind)
 
 ```bash
-scripts/kind-up.sh                         # cria o cluster, build da imagem, kind load, apply k8s/base
+scripts/kind-up.sh                         # cria o cluster, build, kind load, recria nós/observador e sobe clientes contínuos
 IMAGE=maekawa:dev scripts/run-experiment.sh sem-protocolo 1
 IMAGE=maekawa:dev scripts/run-experiment.sh deadlock 1
 IMAGE=maekawa:dev scripts/run-experiment.sh normal 1 --accesses 30   # 10-50 por cliente; default do overlay
@@ -130,7 +131,10 @@ scripts/oci-stop.sh
 - violações e máximo de ativos em R (observador);
 - pedidos sem COMMITTED, timeouts;
 - mensagens **de protocolo** por tipo e por entrada (BEGIN/END/COMMITTED ficam fora da conta);
-- espera até o quórum (mediana, p90, máximo), medida com relógio monotônico no próprio nó.
+- espera até o quórum (mediana, p90, máximo), medida com relógio monotônico no próprio nó;
+- `config`: N, K, variante, seção crítica, pausa entre pedidos, acessos por cliente e a **semente** de cada processo, tirados do evento START de cada um.
+
+**Sementes.** A duração da seção crítica (nó) e a pausa entre pedidos (cliente) são sorteadas com `java.util.Random` semeado: o nó *i* usa `RANDOM_SEED + i` e o cliente *i* usa `RANDOM_SEED + 1000 + i`. O `run-experiment.sh` sorteia `RANDOM_SEED` (ou usa o que vier no ambiente: `RANDOM_SEED=1234 scripts/run-experiment.sh normal 1`), põe no ConfigMap e grava em `run.json`; cada processo registra a sua no START. A semente fixa os sorteios, não a execução inteira: a ordem das mensagens na rede continua variando entre rodadas.
 
 O verificador falha se: rodada normal tiver violação ou pedido sem COMMITTED; rodada `sem-protocolo` **não** tiver violação; rodada `deadlock` tiver algum COMMITTED.
 
@@ -141,6 +145,10 @@ O verificador falha se: rodada normal tiver violação ou pedido sem COMMITTED; 
 | `normal` ×3 | 20 acessos por cliente, pausa 1–5 s, zero violação |
 | `alta-contencao` ×3 | sem pausa; aparecem FAILED, INQUIRE, RELINQUISH |
 | `desigual` | client-0 sem pausa, demais normais; distribuição de espera |
+| `normal-4` ×3 | quantidade de participantes: a carga `normal` com 4 nós e 4 clientes (`N_NODES=4`, grade 2×2, K = 3); compara com `normal` (7 nós) |
+| `normal-13` (opcional) | a carga `normal` com 13 nós (plano projetivo de ordem 3, K = 4); fora da suíte: `scripts/run-experiment.sh normal-13 1` |
+
+**Tamanho do cluster.** `N_NODES` escolhe os conjuntos de votação: 7 é o padrão (plano de Fano, K = 3); 4 usa a grade 2×2 (S<sub>i</sub> = linha + coluna de p<sub>i</sub>, K = 3); 13 usa o plano projetivo de ordem 3 (K = 4). Os grupos dependem de N, então trocar o tamanho reinicia nós, observador e clientes.
 
 Resultado de referência numa máquina local (7 clientes × 5 acessos, sem pausa, CS 20–80 ms): 35 entradas, 0 violações, 11,9 mensagens de protocolo por entrada (teoria: 3√N a 6√N ≈ 8 a 16 para N = 7), 96 FAILED, 2 INQUIRE, 2 RELINQUISH.
 
@@ -161,16 +169,24 @@ Aba **Ao vivo**:
 
 - **Experimento:** liga e desliga o Maekawa, mostra a época, quais dos 7 nós confirmaram a troca e as violações por época (as da troca ficam à parte).
 - **Seção crítica:** muda o sleep dentro de R (`cs_min_ms`–`cs_max_ms`) em todos os nós, a partir do próximo acesso de cada um. "Sleep ×2" dobra o valor atual, o que deixa os votos e as sobreposições mais fáceis de acompanhar. Não abre época nova. Também pela API: `POST /mode` com `{"cs_min_ms": 2000, "cs_max_ms": 4000}`.
+- **Frequência de pedidos:** muda a pausa de cada cliente entre um pedido e o próximo (`think_min_ms`–`think_max_ms`), com tudo rodando: o observador anuncia aos nós no `MODE`, e cada nó repassa ao seu cliente no COMMITTED seguinte (sem reiniciar pod). "Mais pedidos ×2" divide a pausa por 2, "Menos pedidos ÷2" dobra, "Sem pausa" zera. A linha "observado" mostra os acessos a R por segundo nos últimos 10 s. Com o Maekawa ligado essa taxa tem teto em 1 / (duração média da seção crítica), cerca de 1,7 acessos/s com 200–1000 ms: abaixo disso, menos pausa não aumenta a taxa, só a fila. Também pela API: `POST /mode` com `{"think_min_ms": 500, "think_max_ms": 1500}`.
 - **Em R agora / Violações** e os últimos eventos.
 - **Zerar contadores:** zera violações, BEGIN/END, máximo em R e a tabela por época no observador, para medir um trecho da rodada do zero (por exemplo, depois de religar o Maekawa). Não mexe no modo, na época nem em quem está em R. Fica no log como `COUNTERS_RESET`, com os valores anteriores. O `verify.py` continua contando todas as violações do log da rodada.
 - **Pods** (só com `--k8s`), com o número de clientes rodando ao lado:
-  - **Reiniciar pods:** recria o observador e os 7 nós com estado limpo (modo, sleep e contadores voltam ao ConfigMap) e dispara de novo o Job de clientes com a mesma especificação. É o miolo do `run-experiment.sh`, sem trocar de overlay nem recolher logs.
-  - **Rodada contínua:** igual, mas os clientes pedem sem parar (`ACCESSES=0` no env do Job, que vence o ConfigMap) até "Parar clientes". Serve para demonstração; as rodadas oficiais continuam finitas.
+  - **Reiniciar pods:** recria o observador e os 7 nós com estado limpo (modo, sleep e contadores voltam ao ConfigMap) e dispara de novo o Job de clientes em modo **contínuo** (`CONTINUOUS=true` no env do Job). É o miolo do `run-experiment.sh`, sem trocar de overlay nem recolher logs.
+  - **Rodada finita:** igual, mas cada cliente faz os `ACCESSES` pedidos do ConfigMap e termina (`CONTINUOUS=false`).
   - **Parar clientes:** apaga o Job de clientes; nós e observador continuam no ar.
+  - **Nós no cluster: 4 / 7:** troca o tamanho com tudo rodando (cerca de 25 s): para os nós, muda `N_NODES`, sobe 4 ou 7 nós, um observador novo e os clientes em modo contínuo. A página acompanha sozinha: com 4 nós o desenho vira a **grade 2×2** (cada grupo é um "L" com o canto no seu nó), e grupos, filas e o "próximo" seguem a topologia nova. Rodadas de 13 nós não têm desenho: a página avisa e mostra só os contadores e o log.
 
-Por que a tela "para": cada cliente faz `ACCESSES` pedidos e sai (o enunciado pede 10 a 50, e o `verify.py` confere um COMMITTED por pedido). O Job tem `restartPolicy: Never` e `backoffLimit: 0`, então não recria clientes, e é apagado uma hora depois de terminar (`ttlSecondsAfterFinished: 3600`). Nós e observador ficam no ar, mas sem carga. `ACCESSES=0` liga o modo contínuo também no `scripts/local-run.sh` (`scripts/local-run.sh 0 1000 3000`), que então roda até Ctrl-C.
+**Contínuo é o padrão.** O ConfigMap base tem `CONTINUOUS: "true"`: os clientes pedem sem parar até o Job ser apagado, e `ACCESSES` é ignorado. O `kind-up.sh` já sobe assim, e o `local-run.sh` sem argumentos também. As rodadas da suíte (`run-experiment.sh`, `run-suite.sh`) continuam finitas: todo overlay põe `CONTINUOUS: "false"`, e o `run-experiment.sh` força `false` mesmo se um overlay esquecer, porque o `verify.py` precisa de um COMMITTED por pedido. No modo contínuo o cliente não desiste de um pedido lento: a cada `REQUEST_TIMEOUT_MS` (60 s) sem COMMITTED ele registra `SLOW_REQUEST` e continua esperando, para uma seção crítica longa ("Sleep ×2" várias vezes) não derrubar o Job inteiro. Na rodada finita o tempo limite continua valendo, porque é como o `verify.py` detecta travamento. `ACCESSES=0` com `CONTINUOUS=false` é um cliente que não pede nada (clientes 3 a 6 do overlay `deadlock`). Numa rodada finita, cada cliente sai depois dos seus pedidos e o Job não recria clientes (`restartPolicy: Never`, `backoffLimit: 0`).
 
-A aba **Replay** reproduz rodadas gravadas: `logs/<overlay>/<rep>/*.jsonl` ou arquivos escolhidos na tela, com pausa, passo e velocidade. A rodada "exemplo sintético" só ensina os botões; não é a suíte da Oracle. Espaço pausa, setas andam um evento.
+A aba **Grupos** lista os 7 conjuntos de votação (S<sub>i</sub> do plano de Fano). Passar o mouse sobre um grupo, ou sobre um nó no desenho, destaca o grupo daquele nó (a linha e os 3 nós) e mostra na aba a quem ele pede voto, para quem ele vota e o nó que divide com cada outro grupo. O desenho continua ao vivo enquanto essa aba está aberta. No canto do desenho, o quadrado **Recurso R** mostra quantos processos estão em R naquele momento e quais (borda vermelha quando há sobreposição). O **próximo** a entrar aparece com um tom claro da cor dele, um anel tracejado girando, a etiqueta "PRÓXIMO" e "k/3 votos" (também no quadrado do recurso). É uma estimativa: entre quem está pedindo, o de melhor prioridade (Lamport, id), a mesma regra dos votantes; os votos que ele já tem aparecem ao lado, mas não mudam a ordem. Sem Maekawa não há pedidos de voto, então não há próximo.
+
+A aba **Fila** mostra, ao vivo, quem está esperando para entrar em R. A **fila de pedidos** lista cada nó que pediu e ainda não entrou: posição, prioridade (Lamport, id), votos que já tem, de quais votantes ainda falta voto e há quanto tempo espera; o 1º é o próximo. A **fila em cada votante** fica ao lado do desenho (sempre visível, ao vivo ou no replay): para cada nó, com quem está o voto dele e quem espera por esse voto, na ordem de prioridade. É essa fila local que existe no Maekawa; a fila de pedidos é uma estimativa montada a partir delas. Logo abaixo dela, **Relógio de Lamport (L, id)** mostra a prioridade do pedido de quem está em R e dos 2 próximos da fila, com os votos que já têm. Embaixo de cada nó do desenho aparece só em quem ele votou (`voto → X`), ou `em R`. Passar o mouse numa linha destaca o grupo do nó.
+
+A aba **Replay** reproduz rodadas gravadas: `logs/<overlay>/<rep>/*.jsonl` ou arquivos escolhidos na tela, com pausa, passo e velocidade. O replay avança **um evento por tick**, com o intervalo escolhido na tela (1 tick a cada 1, 2, 3, 5 ou 10 segundos). Cada evento fica o mesmo tempo na tela, então o acesso a R é um BEGIN e depois um END, sem esperar o sleep real da seção crítica, e as rajadas de mensagens do mesmo milissegundo (numa rodada `normal`, 82% dos intervalos entre eventos são menores que 5 ms) passam uma a uma. A linha do evento atual mostra `t+…`, o tempo real desde o início da rodada.
+
+Os logs de eventos (Ao vivo e Replay) têm rolagem interna e infinita: mostram os últimos 200 eventos e carregam mais 200 a cada vez que se rola até o topo. No fim da lista, acompanham os eventos novos; quem subiu para ler não é puxado de volta. A rodada "exemplo sintético" só ensina os botões; não é a suíte da Oracle. Espaço pausa, setas andam um evento.
 
 O Grafana mostra **gráficos e a lista de logs**, no mesmo cluster, namespace `observability` (o experimento não apaga). Sem porta pública:
 

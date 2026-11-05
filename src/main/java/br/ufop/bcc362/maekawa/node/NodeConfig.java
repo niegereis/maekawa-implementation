@@ -9,22 +9,28 @@ package br.ufop.bcc362.maekawa.node;
  * @param csMinMs        duracao minima da secao critica simulada
  * @param csMaxMs        duracao maxima
  * @param observerName   nome do observador na rede
+ * @param seed           semente do sorteio da duracao da secao critica (registrada no START)
  */
-public record NodeConfig(int pid, Variant variant, boolean syncEnabled, long csMinMs, long csMaxMs, String observerName) {
+public record NodeConfig(int pid, Variant variant, boolean syncEnabled, long csMinMs, long csMaxMs, String observerName,
+                         long seed) {
     public static NodeConfig defaults(int pid) {
-        return new NodeConfig(pid, Variant.RESOLUTION, true, 200, 1000, "observer");
+        return new NodeConfig(pid, Variant.RESOLUTION, true, 200, 1000, "observer", pid);
     }
 
     public NodeConfig withVariant(Variant v) {
-        return new NodeConfig(pid, v, syncEnabled, csMinMs, csMaxMs, observerName);
+        return new NodeConfig(pid, v, syncEnabled, csMinMs, csMaxMs, observerName, seed);
     }
 
     public NodeConfig withSyncEnabled(boolean e) {
-        return new NodeConfig(pid, variant, e, csMinMs, csMaxMs, observerName);
+        return new NodeConfig(pid, variant, e, csMinMs, csMaxMs, observerName, seed);
     }
 
     public NodeConfig withCriticalSection(long min, long max) {
-        return new NodeConfig(pid, variant, syncEnabled, min, max, observerName);
+        return new NodeConfig(pid, variant, syncEnabled, min, max, observerName, seed);
+    }
+
+    public NodeConfig withSeed(long s) {
+        return new NodeConfig(pid, variant, syncEnabled, csMinMs, csMaxMs, observerName, s);
     }
 
     public static String nodeName(int pid) {

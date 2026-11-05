@@ -27,8 +27,11 @@ final class TestCluster implements AutoCloseable {
     }
 
     TestCluster(Variant variant, long csMinMs, long csMaxMs, DeliveryGate gate, boolean syncEnabled) {
+        this(Quorum.fano(), variant, csMinMs, csMaxMs, gate, syncEnabled);
+    }
+
+    TestCluster(Quorum q, Variant variant, long csMinMs, long csMaxMs, DeliveryGate gate, boolean syncEnabled) {
         net = gate == null ? new InMemoryNetwork() : new InMemoryNetwork(gate);
-        Quorum q = Quorum.fano();
         for (int i = 0; i < q.size(); i++) {
             NodeConfig cfg = NodeConfig.defaults(i).withVariant(variant).withCriticalSection(csMinMs, csMaxMs)
                     .withSyncEnabled(syncEnabled);

@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -60,6 +60,10 @@ public final class Node implements AutoCloseable {
 
     /** Duracao da secao critica simulada: sleep uniforme em [minMs, maxMs]. Comeca em CS_MIN_MS/CS_MAX_MS. */
     private final AtomicReference<CriticalSection> cs;
+    /** Pausa entre pedidos anunciada pelo observador; null = o cliente usa a do proprio ambiente. */
+    private final AtomicReference<long[]> think = new AtomicReference<>();
+    /** Sorteio da duracao da secao critica, com a semente de cfg.seed() (Random e thread-safe). */
+    private final Random rnd;
 
     public record CriticalSection(long minMs, long maxMs) {
         public CriticalSection {
@@ -86,6 +90,7 @@ public final class Node implements AutoCloseable {
         this.voter = new Voter(cfg.pid(), cfg.variant(), out);
         this.mode = new AtomicReference<>(new Mode(cfg.syncEnabled(), 0));
         this.cs = new AtomicReference<>(new CriticalSection(cfg.csMinMs(), cfg.csMaxMs()));
+        this.rnd = new Random(cfg.seed());
     }
 
     public void start() {
@@ -93,7 +98,11 @@ public final class Node implements AutoCloseable {
         log.local("START", null, clock.now(), null, Map.of(
                 "variant", cfg.variant().name(),
                 "sync_enabled", cfg.syncEnabled(),
-                "voters", quorum.votersOf(cfg.pid())));
+                "voters", quorum.votersOf(cfg.pid()),
+                "n_nodes", quorum.size(),
+                "cs_min_ms", cfg.csMinMs(),
+                "cs_max_ms", cfg.csMaxMs(),
+                "seed", cfg.seed()));
         // pergunta o modo atual: se o pod reiniciou depois de uma troca, adota o valor do cluster
         sendInstrumentation(MessageType.MODE_QUERY, cfg.observerName(), null, mode.get().epoch());
     }
@@ -174,7 +183,7 @@ public final class Node implements AutoCloseable {
         registerWithObserver(MessageType.BEGIN, MessageType.BEGIN_ACK, id, epoch);
         log.local("ENTER", id, clock.now());
         CriticalSection c = cs.get();
-        long ms = ThreadLocalRandom.current().nextLong(c.minMs(), c.maxMs() + 1);
+        long ms = c.minMs() + (c.maxMs() > c.minMs() ? Math.floorMod(rnd.nextLong(), c.maxMs() - c.minMs() + 1) : 0);
         Thread.sleep(ms);
         log.local("EXIT", id, clock.now(), null, Map.of("held_ms", ms));
         registerWithObserver(MessageType.END, MessageType.END_ACK, id, epoch);
@@ -288,11 +297,21 @@ public final class Node implements AutoCloseable {
                 log.info("MODE com secao critica invalida, ignorada: " + e.getMessage());
             }
         }
+        if (m.thinkMinMs() != null && m.thinkMaxMs() != null && m.thinkMinMs() >= 0 && m.thinkMaxMs() >= m.thinkMinMs()) {
+            long[] nextThink = {m.thinkMinMs(), m.thinkMaxMs()};
+            long[] prevThink = think.getAndSet(nextThink);
+            if (prevThink == null || prevThink[0] != nextThink[0] || prevThink[1] != nextThink[1]) {
+                log.local("THINK_CHANGE", null, lamport, null, Map.of(
+                        "think_min_ms", nextThink[0], "think_max_ms", nextThink[1]));
+            }
+        }
         CriticalSection c = cs.get();
+        long[] th = think.get();
         long t = clock.tick();
         Message ack = Message.of(MessageType.MODE_ACK, name, m.from(), t, null)
                 .withProcessId(cfg.pid()).withMode(next.syncEnabled(), next.epoch())
-                .withCriticalSection(c.minMs(), c.maxMs());
+                .withCriticalSection(c.minMs(), c.maxMs())
+                .withThink(th == null ? null : th[0], th == null ? null : th[1]);
         log.message("send", ack, t, null);
         transport.send(ack);
     }
@@ -305,7 +324,7 @@ public final class Node implements AutoCloseable {
             acquire(id);
             enter(id);
             release(id);
-            sendInstrumentation(MessageType.COMMITTED, req.from(), id, null);
+            sendCommitted(req.from(), id);
             log.local("COMMITTED", id, clock.now());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -328,6 +347,16 @@ public final class Node implements AutoCloseable {
             m = Message.of(type, name, NodeConfig.nodeName(toPid), lamport, id).withProcessId(cfg.pid());
         }
         log.message("send", m, lamport, requester.votes());
+        transport.send(m);
+    }
+
+    /** COMMITTED leva a pausa anunciada pelo observador: o cliente usa a partir do proximo pedido. */
+    private void sendCommitted(String client, RequestId id) {
+        long lamport = clock.tick();
+        long[] th = think.get();
+        Message m = Message.of(MessageType.COMMITTED, name, client, lamport, id).withProcessId(cfg.pid());
+        if (th != null) m = m.withThink(th[0], th[1]);
+        log.message("send", m, lamport, null);
         transport.send(m);
     }
 

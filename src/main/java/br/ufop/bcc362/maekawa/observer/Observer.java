@@ -51,6 +51,10 @@ public final class Observer implements AutoCloseable {
     private final Map<Long, EpochStats> epochs = new TreeMap<>();
     /** secao critica anunciada; null ate alguem trocar pela API */
     private Long csMinMs, csMaxMs;
+    /** pausa entre pedidos anunciada; null ate alguem trocar pela API */
+    private Long thinkMinMs, thinkMaxMs;
+    /** no -> [min, max] da pausa confirmada no ultimo MODE_ACK */
+    private final Map<String, long[]> nodeThink = new TreeMap<>();
     /** no -> [min, max] confirmado no ultimo MODE_ACK */
     private final Map<String, long[]> nodeCs = new TreeMap<>();
     public static final long CS_LIMIT_MS = 60_000;
@@ -138,6 +142,26 @@ public final class Observer implements AutoCloseable {
         return modeStatus();
     }
 
+    /**
+     * Troca a pausa entre pedidos dos clientes (a frequencia de pedidos). Vai aos nos no MODE e
+     * deles aos clientes no proximo COMMITTED. Nao abre epoca nova.
+     */
+    public synchronized Map<String, Object> setThink(long min, long max) {
+        if (min < 0 || max < min || max > CS_LIMIT_MS) {
+            throw new IllegalArgumentException("pausa invalida: precisa 0 <= min <= max <= " + CS_LIMIT_MS);
+        }
+        Map<String, Object> ev = new LinkedHashMap<>();
+        ev.put("think_min_ms", min);
+        ev.put("think_max_ms", max);
+        ev.put("previous_think_min_ms", thinkMinMs);
+        ev.put("previous_think_max_ms", thinkMaxMs);
+        thinkMinMs = min;
+        thinkMaxMs = max;
+        log.local("THINK_CHANGE", null, clock.tick(), null, ev);
+        for (int i = 0; i < nodeCount; i++) sendMode("sync-" + i);
+        return modeStatus();
+    }
+
     public synchronized boolean syncEnabled() {
         return syncEnabled;
     }
@@ -175,6 +199,14 @@ public final class Observer implements AutoCloseable {
         }
         s.put("node_cs", perNodeCs);
         s.put("cs_acked", csMinMs == null ? null : csAcked);
+        s.put("think_min_ms", thinkMinMs);
+        s.put("think_max_ms", thinkMaxMs);
+        int thinkAcked = 0;
+        for (int i = 0; i < nodeCount; i++) {
+            long[] t = nodeThink.get("sync-" + i);
+            if (t != null && thinkMinMs != null && t[0] == thinkMinMs && t[1] == thinkMaxMs) thinkAcked++;
+        }
+        s.put("think_acked", thinkMinMs == null ? null : thinkAcked);
         return s;
     }
 
@@ -185,7 +217,8 @@ public final class Observer implements AutoCloseable {
     private void sendMode(String node) {
         long lamport = clock.tick();
         Message m = Message.of(MessageType.MODE, NAME, node, lamport, null).withMode(syncEnabled, epoch)
-                .withCriticalSection(csMinMs, csMaxMs);
+                .withCriticalSection(csMinMs, csMaxMs)
+                .withThink(thinkMinMs, thinkMaxMs);
         log.message("send", m, lamport, null);
         transport.send(m);
     }
@@ -237,6 +270,7 @@ public final class Observer implements AutoCloseable {
                 boolean wasSettled = settled();
                 nodeEpoch.put(m.from(), m.epoch());
                 if (m.csMinMs() != null && m.csMaxMs() != null) nodeCs.put(m.from(), new long[]{m.csMinMs(), m.csMaxMs()});
+                if (m.thinkMinMs() != null && m.thinkMaxMs() != null) nodeThink.put(m.from(), new long[]{m.thinkMinMs(), m.thinkMaxMs()});
                 if (!wasSettled && settled()) {
                     log.local("MODE_SETTLED", null, lamport, null, Map.of(
                             "sync_enabled", syncEnabled, "epoch", epoch,

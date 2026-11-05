@@ -167,7 +167,7 @@ class ModeSwitchTest {
     void clienteContinuoPedeAteSerInterrompido() throws Exception {
         try (TestCluster c = new TestCluster(Variant.RESOLUTION, 5, 10, null, true)) {
             c.awaitSettled();
-            Client.Config cfg = new Client.Config(0, "sync-0", 0, 0, 0, 0, 10_000);
+            Client.Config cfg = new Client.Config(0, "sync-0", 3, 0, 0, 0, 10_000, true);
             assertTrue(cfg.continuous());
             Client cl = new Client(cfg, c.net.endpoint("client-0"), new EventLog("client-0", null, TestCluster.QUIET));
             Thread t = Thread.ofVirtual().start(() -> {
@@ -187,6 +187,84 @@ class ModeSwitchTest {
             assertFalse(t.isAlive(), "interromper encerra o cliente");
             assertEquals(0, cl.timedOut());
             assertThrows(IllegalArgumentException.class, () -> new Client.Config(0, "sync-0", -1, 0, 0, 0, 1000));
+
+            // ACCESSES=0 sem CONTINUOUS e um cliente parado (clientes 3..6 do overlay deadlock), nao continuo
+            Client idle = new Client(new Client.Config(9, "sync-1", 0, 0, 0, 0, 1000),
+                    c.net.endpoint("client-9"), new EventLog("client-9", null, TestCluster.QUIET));
+            Thread it = Thread.ofVirtual().start(() -> {
+                try {
+                    idle.run();
+                } catch (InterruptedException ignored) {
+                }
+            });
+            it.join(2_000);
+            assertFalse(it.isAlive(), "ACCESSES=0 termina na hora");
+            assertEquals(0, idle.committed());
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void clienteContinuoNaoDesisteDePedidoLento() throws Exception {
+        // secao critica de 300 ms e timeout de 100 ms: todo pedido "estoura", e o cliente segue
+        try (TestCluster c = new TestCluster(Variant.RESOLUTION, 300, 300, null, true)) {
+            c.awaitSettled();
+            Client cl = new Client(new Client.Config(0, "sync-0", 1, 0, 0, 0, 100, true),
+                    c.net.endpoint("client-0"), new EventLog("client-0", null, TestCluster.QUIET));
+            Thread t = Thread.ofVirtual().start(() -> {
+                try {
+                    cl.run();
+                } catch (InterruptedException ignored) {
+                }
+            });
+            long deadline = System.nanoTime() + 10_000_000_000L;
+            while (cl.committed() < 3) {
+                if (System.nanoTime() > deadline) fail("cliente continuo parou em " + cl.committed());
+                Thread.sleep(10);
+            }
+            assertTrue(t.isAlive());
+            assertEquals(0, cl.timedOut(), "continuo nao desiste");
+            assertTrue(cl.slow() > 0, "mas registra o pedido lento");
+            t.interrupt();
+            t.join(5_000);
+
+            // finito com o mesmo timeout desiste no primeiro pedido
+            Client fin = new Client(new Client.Config(1, "sync-1", 5, 0, 0, 0, 100),
+                    c.net.endpoint("client-1"), new EventLog("client-1", null, TestCluster.QUIET));
+            fin.run();
+            assertEquals(1, fin.timedOut());
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void pausaEntrePedidosMudaEmTempoDeExecucao() throws Exception {
+        try (TestCluster c = new TestCluster(Variant.RESOLUTION, 5, 10, null, true)) {
+            c.awaitSettled();
+            c.observer.setThink(0, 0);
+            long deadline = System.nanoTime() + 5_000_000_000L;
+            while (!Integer.valueOf(7).equals(c.observer.modeStatus().get("think_acked"))) {
+                if (System.nanoTime() > deadline) fail("nos nao confirmaram a pausa: " + c.observer.modeStatus());
+                Thread.sleep(5);
+            }
+            assertEquals(0, c.observer.epoch(), "trocar a pausa nao abre epoca");
+
+            // cliente configurado com 1 s de pausa: sem a troca faria ~2 pedidos em 1,5 s
+            Client cl = new Client(new Client.Config(0, "sync-0", 0, 1000, 1000, 0, 10_000, true),
+                    c.net.endpoint("client-0"), new EventLog("client-0", null, TestCluster.QUIET));
+            Thread t = Thread.ofVirtual().start(() -> {
+                try {
+                    cl.run();
+                } catch (InterruptedException ignored) {
+                }
+            });
+            Thread.sleep(1_500);
+            t.interrupt();
+            t.join(5_000);
+            assertArrayEquals(new long[]{0, 0}, cl.think(), "o COMMITTED trouxe a pausa nova");
+            assertTrue(cl.committed() >= 10, "sem pausa o cliente pede bem mais: " + cl.committed());
+
+            assertThrows(IllegalArgumentException.class, () -> c.observer.setThink(500, 100));
         }
     }
 

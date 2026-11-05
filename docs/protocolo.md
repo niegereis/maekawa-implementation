@@ -40,10 +40,10 @@ Cada nó faz dois papéis ao mesmo tempo, com estado separado:
 | `INQUIRE` | votante → pedinte detentor do voto | request_id (do detentor) | resolução |
 | `RELINQUISH` | pedinte → votante | request_id | resolução |
 | `ACQUIRE_REQ` | cliente → seu nó | request_id | instrumentação |
-| `COMMITTED` | nó → cliente | request_id | instrumentação |
+| `COMMITTED` | nó → cliente | request_id; think_min_ms, think_max_ms quando o observador anunciou outra pausa | instrumentação |
 | `BEGIN` / `END` | nó → observador | request_id, process_id | instrumentação |
 | `BEGIN_ACK` / `END_ACK` | observador → nó | request_id | instrumentação |
-| `MODE` | observador → nó | sync_enabled, epoch; cs_min_ms, cs_max_ms (opcionais) | controle do experimento |
+| `MODE` | observador → nó | sync_enabled, epoch; cs_min_ms, cs_max_ms, think_min_ms, think_max_ms (opcionais) | controle do experimento |
 | `MODE_ACK` | nó → observador | sync_enabled, epoch, cs_min_ms, cs_max_ms (valores do nó) | controle do experimento |
 | `MODE_QUERY` | nó → observador | epoch (a do nó) | controle do experimento |
 

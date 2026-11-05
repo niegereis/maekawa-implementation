@@ -35,7 +35,8 @@ LOGS = PROJECT / "logs"
 # <overlay>/<rep>: rep numérico da suíte ou o timestamp do local-run.sh (20261105-131500)
 RUN_ID = re.compile(r"[a-z0-9-]+/[A-Za-z0-9_-]+")
 SEND = {"REQUEST", "LOCKED", "FAILED", "INQUIRE", "RELINQUISH", "RELEASE"}
-OBS = {"BEGIN", "END", "VIOLATION", "MODE_INIT", "MODE_CHANGE", "MODE_SETTLED", "CS_CHANGE", "COUNTERS_RESET"}
+OBS = {"BEGIN", "END", "VIOLATION", "MODE_INIT", "MODE_CHANGE", "MODE_SETTLED", "CS_CHANGE", "COUNTERS_RESET",
+       "THINK_CHANGE"}
 HUB = live.Hub()
 SSE_PING_S = 15
 OBSERVER_URL = os.environ.get("OBSERVER_URL", "http://127.0.0.1:7380").rstrip("/")
@@ -46,6 +47,8 @@ def keep(event: dict) -> bool:
     ev = event.get("event")
     if event.get("direction") == "send" and ev in SEND:
         return True
+    if ev == "START" and event.get("n_nodes") is not None:
+        return True  # START dos nós: diz o N da rodada (4, 7, 13)
     return event.get("process") == "observer" and ev in OBS
 
 
@@ -154,7 +157,8 @@ class Handler(BaseHTTPRequestHandler):
             r = live.RESTARTER
             self._json({"source": os.environ.get("VIZ_SOURCE", "local"),
                         "restart": dict(r.state) if r else None,
-                        "clients": dict(live.CLIENTS) if r else None})
+                        "clients": dict(live.CLIENTS) if r else None,
+                        "cluster": dict(live.CLUSTER) if r else None})
             return
         if parsed.path == "/api/mode":
             self._proxy("/mode")
@@ -190,7 +194,13 @@ class Handler(BaseHTTPRequestHandler):
                     body = json.loads(self.rfile.read(length)) if 0 < length <= 4096 else {}
                 except ValueError:
                     body = {}
-                ok = r.start(continuous=isinstance(body, dict) and body.get("continuous") is True)
+                # padrão contínuo; só {"continuous": false} pede rodada finita; {"nodes": 4} troca o N
+                body = body if isinstance(body, dict) else {}
+                nodes = body.get("nodes")
+                if nodes is not None and (not isinstance(nodes, int) or isinstance(nodes, bool) or nodes not in live.NODE_CHOICES):
+                    self._json({"error": f"nodes deve ser um de {list(live.NODE_CHOICES)}"}, 400)
+                    return
+                ok = r.start(continuous=body.get("continuous") is not False, nodes=nodes)
             if not ok:
                 self._json({"error": "já há uma operação em andamento", "restart": dict(r.state)}, 409)
                 return
@@ -220,8 +230,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "cs_min_ms e cs_max_ms devem ir juntos, em ms inteiros"}, 400)
                 return
             change["cs_min_ms"], change["cs_max_ms"] = lo, hi
+        if "think_min_ms" in body or "think_max_ms" in body:
+            lo, hi = body.get("think_min_ms"), body.get("think_max_ms")
+            if not (isinstance(lo, int) and isinstance(hi, int)) or isinstance(lo, bool) or isinstance(hi, bool):
+                self._json({"error": "think_min_ms e think_max_ms devem ir juntos, em ms inteiros"}, 400)
+                return
+            change["think_min_ms"], change["think_max_ms"] = lo, hi
         if not change:
-            self._json({"error": "informe sync_enabled e/ou cs_min_ms + cs_max_ms"}, 400)
+            self._json({"error": "informe sync_enabled, cs_min_ms + cs_max_ms e/ou think_min_ms + think_max_ms"}, 400)
             return
         self._proxy("/mode", change)
 

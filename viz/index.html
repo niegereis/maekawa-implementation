@@ -29,8 +29,17 @@
     p { margin: 0; color: var(--muted); }
     main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; }
     .stage, .side { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
-    .stage { padding: 8px; }
+    .stage { padding: 8px; display: flex; gap: 12px; align-items: flex-start; }
+    .stage svg { flex: 1 1 auto; min-width: 0; }
     svg { width: 100%; height: auto; display: block; }
+    .voter-panel { flex: 0 0 230px; border-left: 1px solid var(--line); padding: 4px 0 4px 12px; }
+    .voter-panel h3 { margin: 0 0 6px; }
+    .tuple-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .tuple-row .lbl { color: var(--muted); min-width: 54px; }
+    .tuple-row code { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text); white-space: nowrap; }
+    .tuple-row.current code { font-weight: 700; }
+    .tuple-row .votes { color: var(--muted); margin-left: auto; white-space: nowrap; font-size: 11px; }
+    .voter-row .sep { color: var(--muted); font-size: 11px; margin: 0 2px; }
     .quorum { fill: none; stroke: #3d4b60; stroke-width: 1.5; }
     .quorum.on { stroke: var(--amber); stroke-width: 2.5; }
     .node-label { font: 600 16px system-ui, sans-serif; fill: #10141a; }
@@ -44,6 +53,45 @@
     .res-sub { font: 11px system-ui, sans-serif; fill: var(--muted); }
     .res-chip-label { font: 600 10px system-ui, sans-serif; fill: #10141a; }
     .res-link { stroke-width: 2; stroke-dasharray: 5 5; opacity: .8; }
+    /* próximo a entrar em R: anel tracejado girando em volta do nó, cor clara */
+    .next-ring { fill: none; stroke-width: 3; stroke-dasharray: 7 5; opacity: 0; }
+    .node.next .next-ring { opacity: 1; animation: next-spin 2.4s linear infinite, next-pulse 1.2s ease-in-out infinite alternate; }
+    @keyframes next-spin { to { stroke-dashoffset: -48; } }
+    @keyframes next-pulse { from { stroke-width: 2; } to { stroke-width: 4.5; } }
+    .node-tag { font: 700 10px system-ui, sans-serif; letter-spacing: .06em; opacity: 0; }
+    .node.next .node-tag { opacity: 1; }
+    .node-votes { font: 600 10px system-ui, sans-serif; opacity: 0; }
+    .node.next .node-votes { opacity: 1; }
+    .res-next { font: 12px system-ui, sans-serif; fill: var(--muted); }
+    .res-next tspan.who { font-weight: 700; }
+    /* destaque de grupo: o resto do desenho fica apagado */
+    svg .quorum, svg .node, svg #resource, svg #res-links { transition: opacity .12s; }
+    svg.focusing .quorum:not(.hl), svg.focusing .node:not(.hl), svg.focusing #resource, svg.focusing #res-links { opacity: .18; }
+    svg .quorum.hl { stroke-width: 6; }
+    svg .node { cursor: pointer; }
+    .group-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; user-select: none; }
+    .group-row.active { border-color: var(--amber); background: #232a35; }
+    .group-row .swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .group-row code { font-family: ui-monospace, monospace; font-size: 13px; }
+    .group-row .who { color: var(--muted); font-size: 12px; margin-left: auto; }
+    #group-list { display: flex; flex-direction: column; gap: 6px; }
+    #group-focus { border: 1px solid var(--line); border-radius: 6px; padding: 10px; min-height: 92px; font-size: 13px; }
+    #group-focus b { font-size: 15px; }
+    #group-focus ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+    table.queue { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+    table.queue th, table.queue td { text-align: left; padding: 4px 3px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    table.queue th { color: var(--muted); font-weight: 500; }
+    table.queue tbody tr { cursor: pointer; }
+    table.queue tbody tr:hover, table.queue tbody tr.active { background: #232a35; }
+    table.queue tr.first td { color: var(--text); font-weight: 600; }
+    .pid-chip { display: inline-block; min-width: 26px; text-align: center; border-radius: 999px; padding: 0 6px; color: #10141a; font-weight: 700; font-size: 11px; }
+    .voter-row { display: flex; gap: 8px; align-items: center; font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .voter-row .lbl { color: var(--muted); min-width: 92px; }
+    .voter-row .q { display: flex; gap: 4px; flex-wrap: wrap; }
+    .pane h3 { font-size: 13px; font-weight: 600; margin: 4px 0 0; }
+    .formula { border-top: 1px solid var(--line); padding-top: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+    .formula ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+    .formula li b { color: var(--text); font-weight: 600; }
     .side { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
     label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 13px; }
     select, button, input[type="range"] { font: inherit; }
@@ -57,9 +105,10 @@
     .stat.bad b { color: var(--danger); }
     .banner { display: none; background: #3a2226; color: #ffd0d4; border-radius: 6px; padding: 8px 10px; }
     .banner.show { display: block; }
-    #tape, #live-tape { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; }
-    #tape li, #live-tape li { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
-    #tape li.now, #live-tape li:last-child { color: var(--text); }
+    #tape, #live-tape { list-style: none; margin: 0; padding: 0 4px 0 0; height: 300px; overflow-y: auto; overscroll-behavior: contain; font-family: ui-monospace, monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; }
+    #tape li, #live-tape li { padding: 3px 6px; border-bottom: 1px solid var(--line); color: var(--muted); }
+    #tape li.now, #live-tape li.now { color: var(--text); background: #232a35; }
+    #tape li.more, #live-tape li.more { text-align: center; font-style: italic; }
     .note { color: var(--muted); font-size: 12px; }
     .live { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
     .live h2 { font-size: 14px; font-weight: 600; margin: 0; }
@@ -70,10 +119,13 @@
     .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
     .dot.up { background: var(--ok); }
     .dot.down { background: var(--danger); }
-    .nodes7 { display: flex; gap: 4px; }
-    .nodes7 span { flex: 1; text-align: center; font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 2px 0; color: var(--muted); }
+    .nodes7 { display: flex; gap: 4px; flex-wrap: wrap; }
+    .nodes7 span { flex: 1 0 22px; text-align: center; font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 2px 0; color: var(--muted); }
     .nodes7 span.ok { border-color: var(--ok); color: var(--ok); }
     #live-toggle:disabled { opacity: .5; cursor: default; }
+    .nodes-btn { min-width: 44px; }
+    .nodes-btn.current { border-color: var(--amber); color: var(--amber); font-weight: 700; }
+    .nodes-btn:disabled { cursor: default; }
     #live-toggle.danger { border-color: var(--danger); color: var(--danger); }
     #live-toggle.ok { border-color: var(--ok); color: var(--ok); }
     table.epochs { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -94,6 +146,7 @@
     .stat.wide b { font-size: 15px; }
     /* tela estreita: uma coluna, com a barra lateral (e o painel "Ao vivo") antes do desenho */
     @media (max-width: 860px) { main { grid-template-columns: 1fr; } .side { order: -1; } }
+    @media (max-width: 1100px) { .stage { flex-direction: column; } .voter-panel { flex: none; width: 100%; border-left: 0; border-top: 1px solid var(--line); padding: 8px 0 0; } }
   </style>
 </head>
 <body>
@@ -106,24 +159,36 @@
   </header>
   <main>
     <section class="stage" aria-label="Plano de Fano">
-      <svg viewBox="0 0 640 520" role="img">
+      <div id="too-many" class="banner" role="status"></div>
+      <svg viewBox="0 -26 640 546" role="img">
         <title>Sete processos e os conjuntos de votação</title>
         <g id="lines"></g>
         <g id="res-links"></g>
         <g id="resource" aria-label="Recurso R">
-          <rect id="res-box" class="res-box" x="478" y="14" width="150" height="138" rx="10"></rect>
+          <rect id="res-box" class="res-box" x="478" y="14" width="150" height="162" rx="10"></rect>
           <text class="res-title" x="553" y="36" text-anchor="middle">RECURSO R</text>
           <text id="res-count" class="res-count" x="553" y="88" text-anchor="middle">0</text>
           <text id="res-sub" class="res-sub" x="553" y="106" text-anchor="middle">ninguém acessando</text>
           <g id="res-chips"></g>
+          <text id="res-next" class="res-next" x="553" y="162" text-anchor="middle">próximo: —</text>
         </g>
         <g id="nodes"></g>
       </svg>
+      <aside class="voter-panel" aria-label="Fila em cada votante">
+        <h3>Fila em cada votante</h3>
+        <div id="voter-queues"></div>
+        <p class="note">Com quem está o voto de cada nó e quem espera por ele, por (Lamport, id).</p>
+        <h3>Relógio de Lamport (L, id)</h3>
+        <div id="lamport-tuples"></div>
+        <p class="note">Prioridade do pedido de quem está em R e dos 2 próximos da fila: menor L vence; empate, menor id.</p>
+      </aside>
     </section>
     <aside class="side">
       <div class="tabs" role="tablist">
         <button id="tab-live" type="button" role="tab" aria-selected="true" aria-controls="pane-live">Ao vivo</button>
         <button id="tab-replay" type="button" role="tab" aria-selected="false" aria-controls="pane-replay">Replay</button>
+        <button id="tab-groups" type="button" role="tab" aria-selected="false" aria-controls="pane-groups">Grupos</button>
+        <button id="tab-queue" type="button" role="tab" aria-selected="false" aria-controls="pane-queue">Fila</button>
       </div>
       <div id="pane-live" class="pane" role="tabpanel">
       <section class="live" aria-label="Controle ao vivo do Maekawa">
@@ -156,6 +221,21 @@
           </div>
           <div id="cs-status" class="note"></div>
         </div>
+        <div class="cs" aria-label="Frequência de pedidos dos clientes">
+          <span class="note">Frequência de pedidos: pausa de cada cliente entre um pedido e o próximo (vale a partir do próximo COMMITTED)</span>
+          <div class="row">
+            <input id="think-min" type="number" min="0" max="60000" step="100" aria-label="pausa mínima em ms"> –
+            <input id="think-max" type="number" min="0" max="60000" step="100" aria-label="pausa máxima em ms"> ms
+            <button id="think-apply" type="button" disabled>Aplicar</button>
+          </div>
+          <div class="row">
+            <button type="button" class="think-mult" data-mult="0.5" disabled title="metade da pausa: o dobro de pedidos">Mais pedidos ×2</button>
+            <button type="button" class="think-mult" data-mult="2" disabled title="o dobro da pausa: metade dos pedidos">Menos pedidos ÷2</button>
+            <button type="button" id="think-zero" disabled title="pausa 0: cada cliente pede assim que recebe o COMMITTED">Sem pausa</button>
+          </div>
+          <div id="think-status" class="note"></div>
+          <div id="rate-status" class="note"></div>
+        </div>
       </section>
       <div class="stats">
         <div class="stat"><span>Em R agora</span><b id="live-inr">0</b></div>
@@ -171,14 +251,19 @@
           <span id="clients-status" class="note"></span>
         </div>
         <div class="row">
-          <button id="restart-finite" type="button" disabled title="Recria nós e observador e dispara o Job de clientes de novo, com ACCESSES do ConfigMap">Reiniciar pods</button>
-          <button id="restart-continuous" type="button" disabled title="Recria nós e observador e dispara clientes que pedem sem parar (ACCESSES=0)">Rodada contínua</button>
+          <button id="restart-continuous" type="button" disabled title="Recria nós e observador e dispara clientes que pedem sem parar (padrão)">Reiniciar pods</button>
+          <button id="restart-finite" type="button" disabled title="Recria nós e observador e dispara clientes que fazem ACCESSES pedidos (do ConfigMap) e terminam">Rodada finita</button>
         </div>
         <button id="stop-clients" type="button" disabled title="Apaga o Job de clientes; nós e observador continuam">Parar clientes</button>
+        <div class="row" role="group" aria-label="Quantidade de nós">
+          <span class="note">Nós no cluster:</span>
+          <button type="button" class="nodes-btn" data-nodes="4" disabled title="Grade 2×2, K = 3">4</button>
+          <button type="button" class="nodes-btn" data-nodes="7" disabled title="Plano de Fano, K = 3">7</button>
+        </div>
         <div id="restart-status" class="note"></div>
       </section>
       <div id="live-banner" class="banner" role="status"></div>
-      <ol id="live-tape" class="tape" aria-label="Últimos eventos ao vivo"></ol>
+      <ol id="live-tape" class="tape" aria-label="Eventos ao vivo"></ol>
       </div>
       <div id="pane-replay" class="pane" role="tabpanel" hidden>
       <label>Rodada
@@ -192,15 +277,15 @@
         <button id="back" type="button">Passo −</button>
         <button id="step" type="button">Passo +</button>
       </div>
-      <label>Velocidade
-        <select id="speed">
-          <option value="1">1×</option>
-          <option value="4" selected>4×</option>
-          <option value="16">16×</option>
-          <option value="64">64×</option>
+      <label>Intervalo do tick (um evento por tick)
+        <select id="tick">
+          <option value="1000" selected>1 tick a cada 1 segundo</option>
+          <option value="2000">1 tick a cada 2 segundos</option>
+          <option value="3000">1 tick a cada 3 segundos</option>
+          <option value="5000">1 tick a cada 5 segundos</option>
+          <option value="10000">1 tick a cada 10 segundos</option>
         </select>
       </label>
-      <label class="row"><input id="skip" type="checkbox" checked> Pular esperas longas</label>
       <label>Posição
         <input id="scrub" type="range" min="-1" value="-1" max="-1">
       </label>
@@ -211,32 +296,74 @@
       </div>
       <div id="banner" class="banner" role="status"></div>
       <div id="now" class="note">antes do primeiro evento</div>
-      <ol id="tape" aria-label="Eventos recentes"></ol>
+      <ol id="tape" aria-label="Eventos até a posição atual"></ol>
       <p class="note">Espaço pausa. Setas andam um evento. O exemplo sintético não é a suíte da Oracle.</p>
+      </div>
+      <div id="pane-queue" class="pane" role="tabpanel" hidden>
+        <h3>Fila de pedidos</h3>
+        <table class="queue" aria-label="Fila de pedidos">
+          <thead><tr><th>#</th><th>Nó</th><th>(L, id)</th><th>Votos</th><th title="votantes cujo voto ainda falta">Falta</th><th title="tempo desde o pedido">Espera</th></tr></thead>
+          <tbody id="queue-body"></tbody>
+        </table>
+        <div id="queue-empty" class="note"></div>
+        <p class="note">O Maekawa não tem fila global: cada nó guarda a própria fila de pedidos que aguardam o seu voto, ordenada por (Lamport, id); ela aparece ao lado do desenho, em “Fila em cada votante”. A fila acima junta esses dados numa estimativa ordenada pela mesma prioridade (Lamport, id); o 1º é o próximo. A coluna de votos mostra quantos ele já tem, mas não muda a ordem. Passe o mouse numa linha para ver o grupo do nó.</p>
+      </div>
+      <div id="pane-groups" class="pane" role="tabpanel" hidden>
+        <div id="group-list" role="list"></div>
+        <div id="group-focus" aria-live="polite"></div>
+        <div class="formula">
+          <p class="note"><span id="groups-intro">Conjuntos de votação do plano de Fano (N = 7, K = 3)</span>: para entrar em R, p<sub>i</sub> precisa do voto de todos os nós de S<sub>i</sub>. Quaisquer dois grupos têm pelo menos um nó em comum (no plano de Fano, exatamente um), e esse nó só vota em um de cada vez. Passe o mouse sobre um grupo ou sobre um nó do desenho.</p>
+          <b>Como escolher N e K com segurança (Maekawa, 1985)</b>
+          <ul>
+            <li><b>Segurança:</b> S<sub>i</sub> ∩ S<sub>j</sub> ≠ ∅ para todo i, j. Dois pedidos sempre disputam o voto de algum nó em comum, e ele só vota em um.</li>
+            <li><b>Tamanho:</b> N = K(K − 1) + 1, logo K ≈ √N. Aqui: K = 3 ⇒ N = 3·2 + 1 = <b>7</b>.</li>
+            <li><b>Equilíbrio:</b> |S<sub>i</sub>| = K, p<sub>i</sub> ∈ S<sub>i</sub> e cada nó está em exatamente K grupos (todos votam o mesmo tanto).</li>
+            <li><b>Existência:</b> esses grupos são as retas de um plano projetivo de ordem q = K − 1, que existe quando q é potência de primo: K = 3, 4, 5, 6, 8… ⇒ N = 7, 13, 21, 31, 57…</li>
+            <li><b>Outro N:</b> grade √N × √N, com S<sub>i</sub> = linha ∪ coluna de p<sub>i</sub> (K = 2√N − 1). Continua seguro, com grupos maiores.</li>
+            <li><b>Custo:</b> 3√N a 6√N mensagens por acesso (N = 7: ≈ 8 a 16).</li>
+          </ul>
+        </div>
       </div>
     </aside>
   </main>
   <script src="/replay.js"></script>
   <script>
-    const POINTS = {
-      0: [320, 48],
-      1: [204, 249],
-      2: [88, 450],
-      3: [436, 249],
-      4: [552, 450],
-      5: [320, 450],
-      6: [320, 316]
-    };
     const COLORS = ["#e6b450", "#7eb6ff", "#8fbc8f", "#f0a3c2", "#c9b3e0", "#f0b27a", "#f0a090"];
-    const LINES = [
-      [0, 1, 2],
-      [0, 3, 4],
-      [2, 5, 4],
-      [0, 6, 5],
-      [2, 6, 3],
-      [1, 6, 4]
-    ];
     const R = window.MaekawaReplay;
+
+    /**
+     * Desenho de cada N suportado: posição dos nós e a forma de cada conjunto de votação.
+     * 7: plano de Fano (6 retas e o círculo {1,3,5}). 4: grade 2x2, S_i = linha + coluna de p_i,
+     * desenhado como um "L" com o canto em p_i, deslocado para o lado de p_i para não sobrepor.
+     */
+    const TOPOS = {
+      7: {
+        n: 7,
+        title: "Sete nós — plano de Fano",
+        intro: "Conjuntos de votação do plano de Fano (N = 7, K = 3)",
+        points: { 0: [320, 48], 1: [204, 249], 2: [88, 450], 3: [436, 249], 4: [552, 450], 5: [320, 450], 6: [320, 316] },
+        shapes: [
+          { set: [1, 3, 5], circle: [320, 316, 134] },
+          { set: [0, 1, 2], path: [0, 1, 2] }, { set: [0, 3, 4], path: [0, 3, 4] }, { set: [2, 4, 5], path: [2, 5, 4] },
+          { set: [0, 5, 6], path: [0, 6, 5] }, { set: [2, 3, 6], path: [2, 6, 3] }, { set: [1, 4, 6], path: [1, 6, 4] }
+        ]
+      },
+      4: {
+        n: 4,
+        title: "Quatro nós — grade 2×2",
+        intro: "Conjuntos de votação da grade 2×2 (N = 4, K = 3): S_i = linha + coluna de p_i",
+        points: { 0: [150, 150], 1: [390, 150], 2: [150, 390], 3: [390, 390] },
+        // o L de S_i tem o canto em p_i e vai pelos dois vizinhos (linha e coluna)
+        shapes: [
+          { set: [0, 1, 2], path: [1, 0, 2], corner: 0 }, { set: [0, 1, 3], path: [0, 1, 3], corner: 1 },
+          { set: [0, 2, 3], path: [0, 2, 3], corner: 2 }, { set: [1, 2, 3], path: [1, 3, 2], corner: 3 }
+        ]
+      }
+    };
+    let TOPO = TOPOS[7];
+    let SETS = R.TOPOLOGIES[7];
+    let POINTS = TOPO.points;
+    let replayLog, liveLog; // LogView, criados depois da classe
     const linesEl = document.getElementById("lines");
     const nodesEl = document.getElementById("nodes");
     const runSel = document.getElementById("run");
@@ -244,29 +371,53 @@
     const playBtn = document.getElementById("play");
 
     let events = [];
+    let replayN = 7; // N da rodada do replay (START dos nós)
     let index = -1;
     let timer = null;
 
+    /** Troca o desenho para N = n (4 ou 7): retas/L dos grupos, nós, título e a aba Grupos. */
+    function setTopology(n) {
+      if (!TOPOS[n] || TOPO.n === n && nodesEl.children.length) return;
+      TOPO = TOPOS[n];
+      SETS = R.TOPOLOGIES[n];
+      POINTS = TOPO.points;
+      document.querySelector("header h1").textContent = TOPO.title;
+      drawStatic();
+      buildGroups();
+    }
+
     function drawStatic() {
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("class", "quorum");
-      circle.setAttribute("data-set", "1,3,5");
-      circle.setAttribute("cx", "320");
-      circle.setAttribute("cy", "316");
-      circle.setAttribute("r", "134");
-      linesEl.appendChild(circle);
-      for (const ids of LINES) {
-        const [a, b, c] = ids;
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-        path.setAttribute("class", "quorum");
-        path.setAttribute("data-set", ids.join(","));
-        path.setAttribute("points", [a, b, c].map((id) => POINTS[id].join(",")).join(" "));
-        linesEl.appendChild(path);
+      linesEl.replaceChildren();
+      nodesEl.replaceChildren();
+      const cx = 270, cy = 270; // centro da grade, para deslocar cada L para o seu canto
+      for (const sh of TOPO.shapes) {
+        let el;
+        if (sh.circle) {
+          el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          el.setAttribute("cx", sh.circle[0]);
+          el.setAttribute("cy", sh.circle[1]);
+          el.setAttribute("r", sh.circle[2]);
+        } else {
+          let dx = 0, dy = 0;
+          if (sh.corner != null) {
+            const [px, py] = POINTS[sh.corner];
+            dx = Math.sign(px - cx) * 9;
+            dy = Math.sign(py - cy) * 9;
+          }
+          el = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+          el.setAttribute("points", sh.path.map((id) => `${POINTS[id][0] + dx},${POINTS[id][1] + dy}`).join(" "));
+        }
+        el.setAttribute("class", "quorum");
+        el.setAttribute("data-set", sh.set.join(","));
+        linesEl.appendChild(el);
       }
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < TOPO.n; i++) {
         const [x, y] = POINTS[i];
         const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         g.setAttribute("id", "p" + i);
+        g.setAttribute("class", "node");
+        g.addEventListener("mouseenter", () => focusGroup(i));
+        g.addEventListener("mouseleave", () => focusGroup(null));
         const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         c.setAttribute("cx", x);
         c.setAttribute("cy", y);
@@ -274,6 +425,26 @@
         c.setAttribute("fill", "#d5dbe3");
         c.setAttribute("stroke", "#10141a");
         c.setAttribute("stroke-width", "2");
+        c.setAttribute("class", "body");
+        const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        ring.setAttribute("class", "next-ring");
+        ring.setAttribute("cx", x);
+        ring.setAttribute("cy", y);
+        ring.setAttribute("r", "35");
+        ring.setAttribute("stroke", COLORS[i]);
+        const tag = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        tag.setAttribute("class", "node-tag");
+        tag.setAttribute("x", x);
+        tag.setAttribute("y", y - 56);
+        tag.setAttribute("text-anchor", "middle");
+        tag.setAttribute("fill", COLORS[i]);
+        tag.textContent = "PRÓXIMO";
+        const votesTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        votesTxt.setAttribute("class", "node-votes");
+        votesTxt.setAttribute("x", x);
+        votesTxt.setAttribute("y", y - 43);
+        votesTxt.setAttribute("text-anchor", "middle");
+        votesTxt.setAttribute("fill", COLORS[i]);
         const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
         t.setAttribute("class", "node-label");
         t.setAttribute("x", x);
@@ -285,19 +456,28 @@
         sub.setAttribute("x", x);
         sub.setAttribute("y", y + 44);
         sub.setAttribute("text-anchor", "middle");
-        g.append(c, t, sub);
+        g.append(ring, c, t, sub, tag, votesTxt);
         nodesEl.appendChild(g);
       }
     }
-
-    const SETS = [[0,1,2],[1,3,5],[2,3,6],[0,3,4],[2,4,5],[0,5,6],[1,4,6]];
 
     let view = "live";
     let replaySource = "nenhuma rodada";
     let liveSource = "conectando…";
 
-    /** Desenha o plano de Fano para um estado (ao vivo ou replay). */
+    /** Desenha o estado (ao vivo ou replay) na topologia dele: 4 nós (grade) ou 7 (Fano). */
     function paint(state) {
+      setTopology(state.n);
+      // há desenho para 4 e 7 nós; com mais (ex.: 13), avisa e não desenha
+      const tooMany = state.maxNode >= state.n;
+      const warn = document.getElementById("too-many");
+      warn.classList.toggle("show", tooMany);
+      warn.textContent = tooMany
+        ? `Esta rodada tem ${state.maxNode + 1} ou mais nós. Há desenho, grupos e filas para N = 4 e N = 7; para N = 13 use o log e o relatório do verify.py.`
+        : "";
+      document.querySelector(".stage svg").style.display = tooMany ? "none" : "";
+      document.querySelector(".voter-panel").style.display = tooMany ? "none" : "";
+      if (tooMany) return;
       document.querySelectorAll(".quorum").forEach((el) => {
         const ids = el.getAttribute("data-set").split(",").map(Number).sort((a, b) => a - b);
         const on = state.inR.some((inside, pid) => {
@@ -307,27 +487,59 @@
         });
         el.classList.toggle("on", on);
       });
-      for (let i = 0; i < 7; i++) {
+      const q = R.queue(state);
+      const next = q.length ? q[0] : null;
+      for (let i = 0; i < state.n; i++) {
         const g = document.getElementById("p" + i);
-        const circle = g.querySelector("circle");
+        const circle = g.querySelector("circle.body");
         const sub = g.querySelector(".node-sub");
         const holder = state.vote[i];
-        circle.setAttribute("fill", state.inR[i] ? COLORS[i] : "#d5dbe3");
+        const isNext = next != null && next.pid === i;
+        g.classList.toggle("next", isNext);
+        if (isNext) {
+          // prioridade do pedido: (relógio de Lamport, id), a ordem que os votantes usam
+          const pr = next.priority;
+          g.querySelector(".node-tag").textContent = Number.isFinite(pr.lamport)
+            ? `PRÓXIMO (${pr.lamport}, ${pr.process_id})` : "PRÓXIMO";
+          g.querySelector(".node-votes").textContent = `${next.votes}/${next.need} votos`;
+        }
+        // em R: cor cheia; próximo: tom bem claro da mesma cor; resto: cinza
+        circle.setAttribute("fill", state.inR[i] ? COLORS[i] : isNext ? tint(COLORS[i], 0.72) : "#d5dbe3");
         circle.setAttribute("stroke", holder == null ? "#10141a" : COLORS[holder]);
         circle.setAttribute("stroke-width", state.inR[i] ? "5" : "3");
+        // embaixo do nó: só em quem ele votou (posição na fila fica na aba Fila e no painel ao lado)
         if (state.inR[i]) sub.textContent = "em R " + (state.held[i] || "");
         else if (holder != null) sub.textContent = "voto → " + holder;
-        else if (state.requesting[i]) sub.textContent = "pedindo";
         else sub.textContent = "livre";
       }
-      paintResource(state);
+      paintResource(state, next);
+      renderVoterQueues(state);
+      renderLamportTuples(state);
     }
 
-    const RES = { x: 478, y: 14, w: 150, h: 138 };
+    /** Mistura a cor com branco: t = 0 é a cor, t = 1 é branco. */
+    function tint(hex, t) {
+      const n = parseInt(hex.slice(1), 16);
+      const mix = (c) => Math.round(c + (255 - c) * t);
+      return `rgb(${mix(n >> 16)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`;
+    }
+
+    const RES = { x: 478, y: 14, w: 150, h: 162 };
     const SVGNS = "http://www.w3.org/2000/svg";
 
     /** Quadrado do recurso R: quantos processos estão em R agora e quais. */
-    function paintResource(state) {
+    function paintResource(state, next) {
+      const nextEl = document.getElementById("res-next");
+      nextEl.replaceChildren();
+      if (next) {
+        const who = document.createElementNS(SVGNS, "tspan");
+        who.setAttribute("class", "who");
+        who.setAttribute("fill", COLORS[next.pid]);
+        who.textContent = "p" + next.pid;
+        nextEl.append("próximo: ", who, ` · ${next.votes}/${next.need} votos`);
+      } else {
+        nextEl.textContent = "próximo: —";
+      }
       const inside = [];
       state.inR.forEach((on, pid) => { if (on) inside.push(pid); });
       const n = inside.length;
@@ -344,7 +556,7 @@
       const step = 20;
       const x0 = RES.x + RES.w / 2 - ((n - 1) * step) / 2;
       inside.forEach((pid, k) => {
-        const cx = x0 + k * step, cy = RES.y + RES.h - 20;
+        const cx = x0 + k * step, cy = RES.y + 114;
         const c = document.createElementNS(SVGNS, "circle");
         c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", "9");
         c.setAttribute("fill", COLORS[pid]);
@@ -367,14 +579,13 @@
     }
 
     function render() {
-      const state = index < 0 ? R.initialState() : R.at(events, index);
+      const state = index < 0 ? R.initialState(replayN) : R.at(events, index, replayN);
       if (view !== "replay") return;
       paint(state);
       const n = state.inR.filter(Boolean).length;
       document.getElementById("inr").textContent = String(n);
       document.getElementById("violbox").classList.toggle("bad", state.violations > 0);
-      document.getElementById("viol").textContent = state.transitionViolations
-        ? `${state.violations} (${state.transitionViolations} na troca)` : String(state.violations);
+      document.getElementById("viol").textContent = fmtViolations(state);
       document.getElementById("rmode").textContent = state.sync == null
         ? "sem eventos de modo neste log"
         : `Maekawa ${state.sync ? "ligado" : "desligado"} · época ${state.epoch}${state.settled ? "" : " · propagando"}`;
@@ -383,19 +594,76 @@
       banner.textContent = state.overlap ? "Sobreposição: mais de um processo em R." : "";
       const ev = events[index];
       document.getElementById("now").textContent = ev
-        ? `${index + 1}/${events.length}  ${describe(ev)}`
+        ? `${index + 1}/${events.length}${realOffset(index)}  ${describe(ev)}`
         : "antes do primeiro evento";
       scrub.max = String(events.length - 1);
       scrub.value = String(index);
-      const tape = document.getElementById("tape");
-      tape.replaceChildren();
-      const from = Math.max(0, index - 6);
-      for (let i = from; i <= index && i < events.length; i++) {
-        const li = document.createElement("li");
-        if (i === index) li.className = "now";
-        li.textContent = describe(events[i]);
-        tape.appendChild(li);
+      replayLog.show(events, index);
+    }
+
+    /**
+     * Log de eventos com rolagem interna e infinita: mostra os últimos CHUNK eventos até `end` e,
+     * ao rolar até o topo, carrega mais CHUNK antigos (sem pular a posição). Se o usuário está no
+     * fim, acompanha os eventos novos; se subiu para ler, não é puxado de volta.
+     */
+    class LogView {
+      constructor(el) {
+        this.el = el;
+        this.list = null;
+        this.start = 0;
+        this.end = -1;
+        el.addEventListener("scroll", () => { if (el.scrollTop < 40) this.loadOlder(); });
       }
+      static CHUNK = 200;
+      item(i) {
+        const li = document.createElement("li");
+        li.textContent = `${i + 1}  ${describe(this.list[i])}`;
+        return li;
+      }
+      atBottom() { return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 30; }
+      markNow() {
+        this.el.querySelectorAll("li.now").forEach((li) => li.classList.remove("now"));
+        const last = this.el.lastElementChild;
+        if (last && this.end >= 0) last.classList.add("now");
+      }
+      show(list, end) {
+        const follow = this.atBottom() || this.list !== list;
+        // avanço pequeno (passo, evento ao vivo): só acrescenta; salto grande: remonta a janela
+        if (list === this.list && end >= this.end && end - this.end <= LogView.CHUNK) {
+          const frag = document.createDocumentFragment();
+          for (let i = this.end + 1; i <= end; i++) frag.appendChild(this.item(i));
+          this.el.appendChild(frag);
+        } else if (list === this.list && end < this.end && end >= this.start) {
+          for (let i = this.end; i > end; i--) this.el.lastElementChild.remove();
+        } else {
+          this.list = list;
+          this.start = Math.max(0, end - LogView.CHUNK + 1);
+          const frag = document.createDocumentFragment();
+          for (let i = this.start; i <= end; i++) frag.appendChild(this.item(i));
+          this.el.replaceChildren(frag);
+        }
+        this.end = end;
+        this.markNow();
+        if (follow) this.el.scrollTop = this.el.scrollHeight;
+      }
+      loadOlder() {
+        if (!this.list || this.start === 0) return;
+        const from = Math.max(0, this.start - LogView.CHUNK);
+        const before = this.el.scrollHeight;
+        const frag = document.createDocumentFragment();
+        for (let i = from; i < this.start; i++) frag.appendChild(this.item(i));
+        this.el.insertBefore(frag, this.el.firstChild);
+        this.start = from;
+        this.el.scrollTop += this.el.scrollHeight - before; // mantém o que estava na tela
+      }
+    }
+
+    /** Violações desde o último "Zerar contadores"; se houve reset, também o total da rodada. */
+    function fmtViolations(st) {
+      let s = String(st.violations);
+      if (st.transitionViolations) s += ` (${st.transitionViolations} na troca)`;
+      if (st.violationsTotal !== st.violations) s += ` · ${st.violationsTotal} na rodada`;
+      return s;
     }
 
     function describe(e) {
@@ -406,6 +674,7 @@
       if (e.event === "MODE_CHANGE") return `MODO → Maekawa ${e.sync_enabled ? "ligado" : "desligado"} · época ${e.epoch}`;
       if (e.event === "MODE_SETTLED") return `MODO confirmado pelos 7 nós · época ${e.epoch} (${e.after_ms} ms)`;
       if (e.event === "COUNTERS_RESET") return `CONTADORES zerados (antes: ${e.before ? e.before.violations : "?"} violações)`;
+      if (e.event === "THINK_CHANGE") return `PAUSA ENTRE PEDIDOS → ${e.think_min_ms}–${e.think_max_ms} ms`;
       if (e.event === "CS_CHANGE") return `SEÇÃO CRÍTICA → ${e.cs_min_ms}–${e.cs_max_ms} ms`;
       return `${e.event} ${e.process || ""} → ${e.peer || ""}${id}`;
     }
@@ -422,21 +691,36 @@
       render();
     }
 
+
+    /**
+     * Ritmo "tick": cada evento ocupa o mesmo tempo na tela, então o acesso a R vira só o BEGIN
+     * num tick e o END em outro, sem esperar o sleep real da seção crítica, e as rajadas de
+     * mensagens (vários eventos no mesmo milissegundo) não passam de uma vez.
+     * Ritmo "real": usa o intervalo do wall_clock entre eventos, como aconteceu.
+     */
     function schedule() {
       if (playBtn.getAttribute("aria-pressed") !== "true") return;
       if (index >= events.length - 1) { stop(); return; }
-      const a = Date.parse(events[Math.max(index, 0)].wall_clock || 0);
-      const b = Date.parse(events[index + 1].wall_clock || a);
-      let gap = Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : 400;
-      if (document.getElementById("skip").checked && gap > 1200) gap = 160;
-      const speed = Number(document.getElementById("speed").value) || 1;
-      timer = setTimeout(() => { arm(index + 1); schedule(); }, gap / speed);
+      const delay = Number(document.getElementById("tick").value) || 1000;
+      timer = setTimeout(() => { arm(index + 1); schedule(); }, delay);
+    }
+    // trocar o intervalo no meio da reprodução vale a partir do próximo tick
+    document.getElementById("tick").addEventListener("change", () => {
+      if (playBtn.getAttribute("aria-pressed") === "true") { clearTimeout(timer); schedule(); }
+    });
+
+    /** Tempo real do evento desde o início da rodada, para não perder a noção de tempo no ritmo tick. */
+    function realOffset(i) {
+      const t0 = Date.parse((events[0] || {}).wall_clock || "");
+      const t = Date.parse((events[i] || {}).wall_clock || "");
+      return Number.isFinite(t0) && Number.isFinite(t) ? ` · t+${((t - t0) / 1000).toFixed(3)} s` : "";
     }
 
     function setEvents(list, label) {
       stop();
       events = list.slice().sort((a, b) => String(a.wall_clock || "").localeCompare(String(b.wall_clock || "")));
       events = events.filter(R.keep);
+      replayN = R.nodesOf(events);
       index = -1;
       replaySource = `${label} · ${events.length} eventos`;
       if (view === "replay") document.getElementById("source").textContent = replaySource;
@@ -500,11 +784,16 @@
     let liveMode = null;
     let liveBusy = false;
 
-    for (let i = 0; i < 7; i++) {
-      const span = document.createElement("span");
-      span.textContent = String(i);
-      live.nodes.appendChild(span);
+    /** Um quadradinho por nó do cluster (7 ou 13, conforme o observador informa). */
+    function ensureNodeBoxes(n) {
+      if (live.nodes.children.length === n) return;
+      live.nodes.replaceChildren(...Array.from({ length: n }, (_, i) => {
+        const span = document.createElement("span");
+        span.textContent = String(i);
+        return span;
+      }));
     }
+    ensureNodeBoxes(7);
 
     function liveOffline(msg) {
       liveMode = null;
@@ -532,6 +821,20 @@
       live.mode.textContent = mode.sync_enabled ? "Maekawa ligado" : "Maekawa desligado";
       live.epoch.textContent = `época ${mode.epoch}`;
       const perNode = mode.node_epochs || {};
+      ensureNodeBoxes(mode.nodes || 7);
+      // o cluster mudou de tamanho (seletor de nós ou overlay): refaz o estado na topologia nova
+      const n = R.TOPOLOGIES[mode.nodes] ? mode.nodes : 7;
+      if (n !== liveN) {
+        liveN = n;
+        liveState = R.initialState(liveN);
+        for (const e of liveEvents) R.apply(liveState, e);
+        schedulePaint();
+      }
+      // sem desenho para esse N (ex.: 13): avisa já na subida, antes do 1º pedido
+      if (!R.TOPOLOGIES[mode.nodes] && liveState.maxNode < mode.nodes - 1) {
+        liveState.maxNode = mode.nodes - 1;
+        schedulePaint();
+      }
       live.nodes.querySelectorAll("span").forEach((el, i) => {
         const e = perNode["sync-" + i];
         el.className = e === mode.epoch ? "ok" : "";
@@ -618,6 +921,7 @@
       document.getElementById("live-reset").disabled = !enabled;
       csApply.disabled = !enabled;
       document.querySelectorAll(".cs-mult").forEach((b) => { b.disabled = !enabled; });
+      renderThink(mode);
       if (!mode) { csStatus.textContent = ""; return; }
       const cur = nodesCs(mode);
       csCurrent = cur && !cur.mixed ? cur : null;
@@ -663,6 +967,78 @@
       sendCs(min, max);
     }));
 
+    // ------------------------------------------------------------ frequência de pedidos
+    const thinkMin = document.getElementById("think-min");
+    const thinkMax = document.getElementById("think-max");
+    const thinkStatus = document.getElementById("think-status");
+    let thinkDirty = false;
+    let thinkCurrent = null; // [min, max] em uso: o anunciado ou o do ConfigMap
+    let clusterThink = null; // THINK_MIN_MS/THINK_MAX_MS do ConfigMap (via /api/info)
+
+    function renderThink(mode) {
+      const enabled = !!mode;
+      ["think-apply", "think-zero"].forEach((id) => { document.getElementById(id).disabled = !enabled; });
+      document.querySelectorAll(".think-mult").forEach((b) => { b.disabled = !enabled; });
+      if (!mode) { thinkStatus.textContent = ""; return; }
+      if (mode.think_min_ms != null) thinkCurrent = [mode.think_min_ms, mode.think_max_ms];
+      else if (!thinkCurrent && clusterThink) thinkCurrent = clusterThink;
+      if (thinkCurrent && !thinkDirty && document.activeElement !== thinkMin && document.activeElement !== thinkMax) {
+        thinkMin.value = String(thinkCurrent[0]);
+        thinkMax.value = String(thinkCurrent[1]);
+      }
+      thinkStatus.textContent = mode.think_min_ms != null
+        ? `pedido ${mode.think_min_ms}–${mode.think_max_ms} ms · ${mode.think_acked}/${mode.nodes} nós repassam aos clientes`
+        : (clusterThink ? `padrão do ConfigMap: ${clusterThink[0]}–${clusterThink[1]} ms (THINK_MIN_MS/THINK_MAX_MS)` : "padrão do ConfigMap (THINK_MIN_MS/THINK_MAX_MS)");
+    }
+
+    async function sendThink(min, max) {
+      min = Math.round(min); max = Math.round(max);
+      if (!(min >= 0 && max >= min && max <= 60000)) {
+        thinkStatus.textContent = "precisa 0 ≤ mínimo ≤ máximo ≤ 60000 ms";
+        return;
+      }
+      try {
+        const res = await fetch("/api/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ think_min_ms: min, think_max_ms: max })
+        });
+        const body = await res.json();
+        if (!res.ok) thinkStatus.textContent = body.error || `erro ${res.status}`;
+        else { thinkDirty = false; thinkCurrent = [min, max]; }
+      } catch (err) {
+        thinkStatus.textContent = String(err);
+      } finally {
+        pollLive();
+      }
+    }
+
+    [thinkMin, thinkMax].forEach((el) => el.addEventListener("input", () => { thinkDirty = true; }));
+    document.getElementById("think-apply").addEventListener("click", () => sendThink(Number(thinkMin.value), Number(thinkMax.value)));
+    document.getElementById("think-zero").addEventListener("click", () => sendThink(0, 0));
+    document.querySelectorAll(".think-mult").forEach((btn) => btn.addEventListener("click", () => {
+      const k = Number(btn.dataset.mult);
+      const [a, b] = thinkCurrent || [Number(thinkMin.value) || 0, Number(thinkMax.value) || 0];
+      // de "sem pausa", "menos pedidos" parte de 250–500 ms
+      const [lo, hi] = a === 0 && b === 0 && k > 1 ? [250, 500] : [a * k, b * k];
+      sendThink(Math.max(0, lo), Math.min(60000, Math.max(lo, hi)));
+    }));
+
+    /** Taxa observada: entradas em R (BEGIN) nos últimos 10 s do relógio dos eventos. */
+    function renderRate() {
+      const el = document.getElementById("rate-status");
+      const now = Date.parse(liveState.lastWall || "");
+      if (!Number.isFinite(now)) { el.textContent = ""; return; }
+      let n = 0;
+      for (let i = liveEvents.length - 1; i >= 0; i--) {
+        const e = liveEvents[i];
+        const t = Date.parse(e.wall_clock || "");
+        if (!Number.isFinite(t) || now - t > 10000) break;
+        if (e.process === "observer" && e.event === "BEGIN") n++;
+      }
+      el.textContent = `observado: ${(n / 10).toFixed(1)} acessos a R por segundo (últimos 10 s, ${liveN} clientes)`;
+    }
+
     // ------------------------------------------------------------ zerar contadores
     // Zera no observador (violações, BEGIN/END, máximo em R, tabela por época). O contador desta
     // tela zera quando o COUNTERS_RESET chega pelo fluxo ao vivo, no mesmo ponto do log.
@@ -694,6 +1070,14 @@
       const k8s = info && info.source === "k8s";
       const busy = !!(info && info.restart && info.restart.running);
       Object.values(podBtns).forEach((b) => { b.disabled = !k8s || busy; });
+      const current = info && info.cluster ? info.cluster.n_nodes : null;
+      if (info && info.cluster && info.cluster.think) clusterThink = info.cluster.think;
+      document.querySelectorAll(".nodes-btn").forEach((b) => {
+        const n = Number(b.dataset.nodes);
+        b.classList.toggle("current", n === current);
+        b.disabled = !k8s || busy || n === current;
+        b.setAttribute("aria-pressed", String(n === current));
+      });
       if (!k8s) {
         clientsStatus.textContent = "";
         restartStatus.textContent = info ? "Disponível só com scripts/viz.sh --k8s." : "";
@@ -730,37 +1114,42 @@
       pollInfo();
     }
 
-    podBtns.finite.addEventListener("click", () => podAction("/api/restart", { continuous: false },
-      "Reiniciar os pods? Nós e observador voltam ao estado inicial (modo, sleep e contadores do ConfigMap) e os 7 clientes rodam de novo."));
     podBtns.continuous.addEventListener("click", () => podAction("/api/restart", { continuous: true },
-      "Iniciar rodada contínua? Nós e observador voltam ao estado inicial e os 7 clientes pedem sem parar até você clicar em Parar clientes."));
+      "Reiniciar os pods? Nós e observador voltam ao estado inicial (modo, sleep e contadores do ConfigMap) e os 7 clientes pedem sem parar até Parar clientes."));
+    podBtns.finite.addEventListener("click", () => podAction("/api/restart", { continuous: false },
+      "Rodada finita? Nós e observador voltam ao estado inicial e cada cliente faz os ACCESSES pedidos do ConfigMap e termina."));
     podBtns.stop.addEventListener("click", () => podAction("/api/stop-clients", {}, null));
+    document.querySelectorAll(".nodes-btn").forEach((b) => b.addEventListener("click", () => {
+      const n = Number(b.dataset.nodes);
+      podAction("/api/restart", { continuous: true, nodes: n },
+        `Trocar para ${n} nós? Os grupos de votação mudam com N, então nós, observador e clientes sobem de novo (rodada contínua).`);
+    }));
     setInterval(pollInfo, 2000);
     pollInfo();
 
+    replayLog = new LogView(document.getElementById("tape"));
+    liveLog = new LogView(document.getElementById("live-tape"));
+
     // ------------------------------------------------------------ fluxo ao vivo (SSE)
-    let liveState = R.initialState();
-    let liveTape = [];
+    let liveN = 7;  // N do cluster ao vivo, informado pelo observador (/api/mode)
+    let liveState = R.initialState(liveN);
+    let liveEvents = [];  // todos os eventos da rodada ao vivo, para o log com rolagem
     let paintPending = false;
 
     function livePaint() {
       paintPending = false;
-      if (view !== "live") return;
+      if (view === "replay") return; // em Grupos e Fila o desenho segue ao vivo
+      if (view === "queue") renderQueue(liveState);
       paint(liveState);
       const n = liveState.inR.filter(Boolean).length;
       document.getElementById("live-inr").textContent = String(n);
-      document.getElementById("live-viol").textContent = liveState.transitionViolations
-        ? `${liveState.violations} (${liveState.transitionViolations} na troca)` : String(liveState.violations);
+      document.getElementById("live-viol").textContent = fmtViolations(liveState);
       document.getElementById("live-violbox").classList.toggle("bad", liveState.violations > 0);
       const banner = document.getElementById("live-banner");
       banner.classList.toggle("show", n > 1);
       banner.textContent = n > 1 ? `Sobreposição agora: ${n} processos em R.` : "";
-      const tape = document.getElementById("live-tape");
-      tape.replaceChildren(...liveTape.map((e) => {
-        const li = document.createElement("li");
-        li.textContent = describe(e);
-        return li;
-      }));
+      liveLog.show(liveEvents, liveEvents.length - 1);
+      renderRate();
       document.getElementById("source").textContent = liveSource;
     }
 
@@ -774,8 +1163,7 @@
 
     function liveApply(e) {
       R.apply(liveState, e);
-      liveTape.push(e);
-      if (liveTape.length > 10) liveTape.shift();
+      liveEvents.push(e);
     }
 
     function connectLive() {
@@ -783,8 +1171,8 @@
       es.onmessage = (msg) => {
         const m = JSON.parse(msg.data);
         if (m.type === "snapshot") {
-          liveState = R.initialState();
-          liveTape = [];
+          liveState = R.initialState(liveN);
+          liveEvents = [];
           for (const e of m.events) liveApply(e);
           liveSource = `ao vivo · ${m.status}`;
         } else if (m.type === "event") {
@@ -800,14 +1188,184 @@
       };
     }
 
+    // ------------------------------------------------------------ fila
+    function chip(pid) {
+      const el = document.createElement("span");
+      el.className = "pid-chip";
+      el.style.background = COLORS[pid];
+      el.textContent = "p" + pid;
+      return el;
+    }
+
+    function hoverable(el, pid) {
+      el.addEventListener("mouseenter", () => focusGroup(pid));
+      el.addEventListener("mouseleave", () => focusGroup(null));
+    }
+
+    function renderQueue(state) {
+      const q = R.queue(state);
+      const body = document.getElementById("queue-body");
+      body.replaceChildren(...q.map((r, k) => {
+        const tr = document.createElement("tr");
+        if (k === 0) tr.className = "first";
+        const pr = Number.isFinite(r.priority.lamport) ? `(${r.priority.lamport}, ${r.priority.process_id})` : "—";
+        const cells = [k === 0 ? "próx." : String(k + 1), null, pr, `${r.votes}/${r.need}`,
+          r.waitingOn.length ? r.waitingOn.map((v) => "p" + v).join(", ") : "—",
+          r.waitMs == null ? "—" : (r.waitMs / 1000).toFixed(1) + " s"];
+        cells.forEach((text, i) => {
+          const td = document.createElement("td");
+          if (i === 1) td.appendChild(chip(r.pid)); else td.textContent = text;
+          tr.appendChild(td);
+        });
+        hoverable(tr, r.pid);
+        return tr;
+      }));
+      const inR = state.inR.map((on, i) => (on ? "p" + i : null)).filter(Boolean);
+      document.getElementById("queue-empty").textContent = q.length ? ""
+        : state.sync === false ? "Maekawa desligado: os nós não pedem voto, então não há fila."
+        : `Ninguém esperando${inR.length ? " (em R: " + inR.join(", ") + ")" : ""}.`;
+    }
+
+    /** (L, id) de quem está em R e dos 2 próximos da fila, embaixo da fila dos votantes. */
+    function renderLamportTuples(state) {
+      const fmt = (pr) => (pr && Number.isFinite(pr.lamport) ? `(${pr.lamport}, ${pr.process_id})` : "—");
+      const rows = [];
+      state.inR.forEach((on, pid) => {
+        if (on) rows.push({ label: "em R", pid, tuple: fmt(state.priority[pid]), extra: "", current: true });
+      });
+      if (!rows.length) rows.push({ label: "em R", pid: null, tuple: "—", extra: "ninguém", current: true });
+      const q = R.queue(state);
+      ["próximo", "depois"].forEach((label, k) => {
+        const r = q[k];
+        rows.push(r ? { label, pid: r.pid, tuple: fmt(r.priority), extra: `${r.votes}/${r.need} votos` }
+          : { label, pid: null, tuple: "—", extra: "" });
+      });
+      document.getElementById("lamport-tuples").replaceChildren(...rows.map((r) => {
+        const row = document.createElement("div");
+        row.className = "tuple-row" + (r.current ? " current" : "");
+        const lbl = document.createElement("span");
+        lbl.className = "lbl";
+        lbl.textContent = r.label;
+        const code = document.createElement("code");
+        code.textContent = r.tuple;
+        const extra = document.createElement("span");
+        extra.className = "votes";
+        extra.textContent = r.extra;
+        row.append(lbl);
+        if (r.pid != null) row.append(chip(r.pid));
+        row.append(code, extra);
+        if (r.pid != null) hoverable(row, r.pid);
+        return row;
+      }));
+    }
+
+    /** Painel ao lado do desenho: segue o mesmo estado do desenho (ao vivo ou replay). */
+    function renderVoterQueues(state) {
+      const vq = document.getElementById("voter-queues");
+      vq.replaceChildren(...R.voterQueues(state).map((v) => {
+        const row = document.createElement("div");
+        row.className = "voter-row";
+        const lbl = document.createElement("span");
+        lbl.className = "lbl";
+        lbl.append(chip(v.voter), v.holder == null ? " livre" : " voto → ");
+        if (v.holder != null) lbl.appendChild(chip(v.holder));
+        const qq = document.createElement("span");
+        qq.className = "q";
+        if (v.waiting.length) {
+          const sep = document.createElement("span");
+          sep.className = "sep";
+          sep.textContent = "fila:";
+          qq.append(sep, ...v.waiting.map((r) => chip(r.pid)));
+        } else {
+          qq.textContent = "fila vazia";
+          qq.classList.add("note");
+        }
+        row.append(lbl, qq);
+        hoverable(row, v.voter);
+        return row;
+      }));
+    }
+
+    // ------------------------------------------------------------ grupos
+    const fmtSet = (ids) => "{" + ids.join(", ") + "}";
+
+    /** Elemento do desenho (linha ou círculo) que representa S_pid. */
+    function quorumEl(pid) {
+      const want = SETS[pid].slice().sort((a, b) => a - b).join();
+      return [...document.querySelectorAll(".quorum")].find((el) =>
+        el.getAttribute("data-set").split(",").map(Number).sort((a, b) => a - b).join() === want);
+    }
+
+    /** Quem tem pid no seu grupo: os nós que pedem voto a pid. */
+    const votesFor = (pid) => SETS.map((s, j) => (s.includes(pid) ? j : -1)).filter((j) => j >= 0);
+
+    function buildGroups() {
+      const list = document.getElementById("group-list");
+      list.replaceChildren();
+      const intro = document.getElementById("groups-intro");
+      if (intro) intro.textContent = TOPO.intro;
+      for (let i = 0; i < TOPO.n; i++) {
+        const row = document.createElement("div");
+        row.className = "group-row";
+        row.id = "group-" + i;
+        row.setAttribute("role", "listitem");
+        row.tabIndex = 0;
+        const sw = document.createElement("span");
+        sw.className = "swatch";
+        sw.style.background = COLORS[i];
+        const code = document.createElement("code");
+        code.textContent = `S${i} = ${fmtSet(SETS[i])}`;
+        const who = document.createElement("span");
+        who.className = "who";
+        who.textContent = `grupo de p${i}`;
+        row.append(sw, code, who);
+        row.addEventListener("mouseenter", () => focusGroup(i));
+        row.addEventListener("mouseleave", () => focusGroup(null));
+        row.addEventListener("focus", () => focusGroup(i));
+        row.addEventListener("blur", () => focusGroup(null));
+        list.appendChild(row);
+      }
+      focusGroup(null);
+    }
+
+    /** Destaca S_pid no desenho (linha e os 3 nós) e mostra o grupo na aba Grupos. */
+    function focusGroup(pid) {
+      const svg = document.querySelector(".stage svg");
+      svg.classList.toggle("focusing", pid != null);
+      document.querySelectorAll(".quorum.hl, .node.hl").forEach((el) => {
+        el.classList.remove("hl");
+        if (el.classList.contains("quorum")) el.style.stroke = "";
+      });
+      document.querySelectorAll(".group-row.active").forEach((el) => el.classList.remove("active"));
+      const card = document.getElementById("group-focus");
+      if (pid == null) {
+        card.innerHTML = '<span class="note">Nenhum grupo selecionado.</span>';
+        return;
+      }
+      const q = quorumEl(pid);
+      if (q) {
+        q.classList.add("hl");
+        q.style.stroke = COLORS[pid];
+      }
+      for (const n of SETS[pid]) document.getElementById("p" + n).classList.add("hl");
+      document.getElementById("group-" + pid).classList.add("active");
+      const shared = SETS.map((s, j) => ({ j, common: s.filter((x) => SETS[pid].includes(x)) }))
+        .filter(({ j }) => j !== pid)
+        .map(({ j, common }) => `<li>com S${j}: p${common.join(", p")}</li>`).join("");
+      card.innerHTML = `<b style="color:${COLORS[pid]}">S${pid} = ${fmtSet(SETS[pid])}</b>
+        <div>p${pid} pede voto a p${SETS[pid].join(", p")}.</div>
+        <div class="note">p${pid} vota nos pedidos de p${votesFor(pid).join(", p")}.</div>
+        <ul>${shared}</ul>`;
+    }
+
     // ------------------------------------------------------------ abas
     function setView(next) {
       view = next;
-      document.getElementById("tab-live").setAttribute("aria-selected", String(next === "live"));
-      document.getElementById("tab-replay").setAttribute("aria-selected", String(next === "replay"));
-      document.getElementById("pane-live").hidden = next !== "live";
-      document.getElementById("pane-replay").hidden = next !== "replay";
-      if (next === "live") {
+      for (const name of ["live", "replay", "groups", "queue"]) {
+        document.getElementById("tab-" + name).setAttribute("aria-selected", String(next === name));
+        document.getElementById("pane-" + name).hidden = next !== name;
+      }
+      if (next === "live" || next === "groups" || next === "queue") {
         stop();
         livePaint();
       } else {
@@ -817,12 +1375,15 @@
     }
     document.getElementById("tab-live").addEventListener("click", () => setView("live"));
     document.getElementById("tab-replay").addEventListener("click", () => setView("replay"));
+    document.getElementById("tab-groups").addEventListener("click", () => setView("groups"));
+    document.getElementById("tab-queue").addEventListener("click", () => setView("queue"));
 
     connectLive();
     setInterval(pollLive, 1000);
     pollLive();
 
     drawStatic();
+    buildGroups();
     render();
     fetch("/api/runs").then((r) => r.json()).then((runs) => {
       runSel.replaceChildren();

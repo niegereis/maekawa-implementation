@@ -6,6 +6,11 @@ metadata:
   namespace: maekawa
 data:
   # --- nos
+  N_NODES: "7"                   # 4 (grade 2x2, K=3), 7 (Fano, K=3) ou 13 (plano projetivo, K=4). Os
+                                 # overlays normal-4/normal-13 e o seletor da tela (viz --k8s) tambem
+                                 # mudam as replicas do StatefulSet e do Job
+  RANDOM_SEED: ""                # semente base dos sorteios (secao critica, pausa); vazio = sorteada.
+                                 # O run-experiment.sh fixa uma e grava em run.json; cada START a registra.
   VARIANT: "resolution"          # basic | resolution
   SYNC_ENABLED: "true"           # false = rodada de instrumentacao (acquire/release viram no-op)
   CS_MIN_MS: "200"               # secao critica simulada: sleep uniforme em [CS_MIN_MS, CS_MAX_MS]
@@ -13,7 +18,9 @@ data:
   GATE_HOLD: ""                  # so o overlay deadlock preenche
   GATE_RELEASE_AFTER_MS: "3000"   # conta a partir do primeiro REQUEST segurado
   # --- clientes
-  ACCESSES: "20"                 # 10..50 pelo enunciado
+  CONTINUOUS: "true"             # padrao: clientes pedem sem parar (ignora ACCESSES). Os overlays
+                                 # da suite poem "false" para a rodada terminar e ser verificada.
+  ACCESSES: "20"                 # 10..50 pelo enunciado (so vale com CONTINUOUS=false)
   THINK_MIN_MS: "1000"           # pausa entre pedidos do mesmo cliente
   THINK_MAX_MS: "5000"
   START_DELAY_MS: "0"
