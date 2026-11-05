@@ -97,6 +97,12 @@ class DeadlockScenarioTest {
             assertEquals(3, committed.get());
             assertEquals(0, c.observer.violations(), "nunca houve dois em R");
             assertEquals(1, c.observer.maxActive());
+            // release() so enfileira os RELEASE: espera eles chegarem aos votantes
+            long settle = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (System.nanoTime() < settle && !c.nodes.stream().allMatch(n ->
+                    n.requester().state() == Requester.State.IDLE && n.voter().state() == Voter.State.FREE)) {
+                Thread.sleep(5);
+            }
             for (Node n : c.nodes) {
                 assertEquals(Requester.State.IDLE, n.requester().state());
                 assertEquals(Voter.State.FREE, n.voter().state(), "p" + n.pid() + " livre ao final");

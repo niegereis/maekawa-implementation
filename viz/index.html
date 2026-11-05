@@ -35,6 +35,15 @@
     .quorum.on { stroke: var(--amber); stroke-width: 2.5; }
     .node-label { font: 600 16px system-ui, sans-serif; fill: #10141a; }
     .node-sub { font: 11px system-ui, sans-serif; fill: var(--muted); }
+    .res-box { fill: #11151c; stroke: var(--line); stroke-width: 2; }
+    .res-box.one { stroke: var(--amber); stroke-width: 3; }
+    .res-box.many { fill: #2a1a1e; stroke: var(--danger); stroke-width: 3; }
+    .res-title { font: 600 13px system-ui, sans-serif; fill: var(--muted); letter-spacing: .04em; }
+    .res-count { font: 600 44px system-ui, sans-serif; fill: var(--text); font-variant-numeric: tabular-nums; }
+    .res-count.many { fill: var(--danger); }
+    .res-sub { font: 11px system-ui, sans-serif; fill: var(--muted); }
+    .res-chip-label { font: 600 10px system-ui, sans-serif; fill: #10141a; }
+    .res-link { stroke-width: 2; stroke-dasharray: 5 5; opacity: .8; }
     .side { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
     label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 13px; }
     select, button, input[type="range"] { font: inherit; }
@@ -48,30 +57,130 @@
     .stat.bad b { color: var(--danger); }
     .banner { display: none; background: #3a2226; color: #ffd0d4; border-radius: 6px; padding: 8px 10px; }
     .banner.show { display: block; }
-    #tape { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; }
-    #tape li { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
-    #tape li.now { color: var(--text); }
+    #tape, #live-tape { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; }
+    #tape li, #live-tape li { padding: 3px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+    #tape li.now, #live-tape li:last-child { color: var(--text); }
     .note { color: var(--muted); font-size: 12px; }
-    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+    .live { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .live h2 { font-size: 14px; font-weight: 600; margin: 0; }
+    .between { justify-content: space-between; }
+    .pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 13px; border: 1px solid var(--line); color: var(--muted); }
+    .pill.on { border-color: var(--ok); color: var(--ok); }
+    .pill.off { border-color: var(--danger); color: var(--danger); }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+    .dot.up { background: var(--ok); }
+    .dot.down { background: var(--danger); }
+    .nodes7 { display: flex; gap: 4px; }
+    .nodes7 span { flex: 1; text-align: center; font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 2px 0; color: var(--muted); }
+    .nodes7 span.ok { border-color: var(--ok); color: var(--ok); }
+    #live-toggle:disabled { opacity: .5; cursor: default; }
+    #live-toggle.danger { border-color: var(--danger); color: var(--danger); }
+    #live-toggle.ok { border-color: var(--ok); color: var(--ok); }
+    table.epochs { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+    table.epochs th, table.epochs td { text-align: right; padding: 2px 4px; border-bottom: 1px solid var(--line); }
+    table.epochs th:first-child, table.epochs td:first-child, table.epochs th:nth-child(2), table.epochs td:nth-child(2) { text-align: left; }
+    table.epochs th { color: var(--muted); font-weight: 500; }
+    table.epochs td.bad { color: var(--danger); }
+    table.epochs tr.current td { color: var(--text); font-weight: 600; }
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); }
+    .tabs button { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 8px; }
+    .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--amber); }
+    .pane { display: flex; flex-direction: column; gap: 10px; }
+    .pane[hidden] { display: none; }
+    .cs { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+    .cs input[type="number"] { width: 78px; background: #11151c; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font: inherit; }
+    .cs .row { flex-wrap: wrap; }
+    .stat.wide { grid-column: 1 / -1; }
+    .stat.wide b { font-size: 15px; }
+    /* tela estreita: uma coluna, com a barra lateral (e o painel "Ao vivo") antes do desenho */
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } .side { order: -1; } }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>Sete nós — plano de Fano</h1>
-      <p>Replay de LOCKED, RELEASE, BEGIN e END. A linha acesa é o conjunto de quem está em R.</p>
+      <p>Votos (LOCKED/RELEASE) e quem está em R (BEGIN/END), em tempo real. A linha acesa é o conjunto de votação de quem está em R.</p>
     </div>
-    <p id="source">nenhuma rodada</p>
+    <p id="source">conectando…</p>
   </header>
   <main>
     <section class="stage" aria-label="Plano de Fano">
       <svg viewBox="0 0 640 520" role="img">
         <title>Sete processos e os conjuntos de votação</title>
         <g id="lines"></g>
+        <g id="res-links"></g>
+        <g id="resource" aria-label="Recurso R">
+          <rect id="res-box" class="res-box" x="478" y="14" width="150" height="138" rx="10"></rect>
+          <text class="res-title" x="553" y="36" text-anchor="middle">RECURSO R</text>
+          <text id="res-count" class="res-count" x="553" y="88" text-anchor="middle">0</text>
+          <text id="res-sub" class="res-sub" x="553" y="106" text-anchor="middle">ninguém acessando</text>
+          <g id="res-chips"></g>
+        </g>
         <g id="nodes"></g>
       </svg>
     </section>
     <aside class="side">
+      <div class="tabs" role="tablist">
+        <button id="tab-live" type="button" role="tab" aria-selected="true" aria-controls="pane-live">Ao vivo</button>
+        <button id="tab-replay" type="button" role="tab" aria-selected="false" aria-controls="pane-replay">Replay</button>
+      </div>
+      <div id="pane-live" class="pane" role="tabpanel">
+      <section class="live" aria-label="Controle ao vivo do Maekawa">
+        <div class="row between">
+          <h2>Experimento</h2>
+          <span class="note"><span id="live-dot" class="dot"></span><span id="live-conn">conectando…</span></span>
+        </div>
+        <div class="row between">
+          <span id="live-mode" class="pill">—</span>
+          <span id="live-epoch" class="note"></span>
+        </div>
+        <div class="nodes7" id="live-nodes" aria-label="Época confirmada por nó"></div>
+        <div id="live-sync" class="note"></div>
+        <button id="live-toggle" type="button" disabled>Ligar/desligar Maekawa</button>
+        <table class="epochs" aria-label="Violações por época">
+          <thead><tr><th>Época</th><th>Modo</th><th>BEGIN</th><th>Máx. R</th><th>Viol.</th></tr></thead>
+          <tbody id="live-epochs"></tbody>
+        </table>
+        <div id="live-trans" class="note"></div>
+        <div class="cs" aria-label="Duração da seção crítica">
+          <span class="note">Seção crítica (sleep dentro de R), vale a partir do próximo acesso</span>
+          <div class="row">
+            <input id="cs-min" type="number" min="0" max="60000" step="100" aria-label="mínimo em ms"> –
+            <input id="cs-max" type="number" min="0" max="60000" step="100" aria-label="máximo em ms"> ms
+            <button id="cs-apply" type="button" disabled>Aplicar</button>
+          </div>
+          <div class="row">
+            <button type="button" class="cs-mult" data-mult="2" disabled>Sleep ×2</button>
+            <button type="button" class="cs-mult" data-mult="0.5" disabled>Sleep ÷2</button>
+          </div>
+          <div id="cs-status" class="note"></div>
+        </div>
+      </section>
+      <div class="stats">
+        <div class="stat"><span>Em R agora</span><b id="live-inr">0</b></div>
+        <div class="stat" id="live-violbox"><span>Violações</span><b id="live-viol">0</b></div>
+      </div>
+      <div class="row between">
+        <button id="live-reset" type="button" disabled>Zerar contadores</button>
+        <span id="reset-status" class="note"></span>
+      </div>
+      <section class="live" aria-label="Pods e clientes">
+        <div class="row between">
+          <h2>Pods</h2>
+          <span id="clients-status" class="note"></span>
+        </div>
+        <div class="row">
+          <button id="restart-finite" type="button" disabled title="Recria nós e observador e dispara o Job de clientes de novo, com ACCESSES do ConfigMap">Reiniciar pods</button>
+          <button id="restart-continuous" type="button" disabled title="Recria nós e observador e dispara clientes que pedem sem parar (ACCESSES=0)">Rodada contínua</button>
+        </div>
+        <button id="stop-clients" type="button" disabled title="Apaga o Job de clientes; nós e observador continuam">Parar clientes</button>
+        <div id="restart-status" class="note"></div>
+      </section>
+      <div id="live-banner" class="banner" role="status"></div>
+      <ol id="live-tape" class="tape" aria-label="Últimos eventos ao vivo"></ol>
+      </div>
+      <div id="pane-replay" class="pane" role="tabpanel" hidden>
       <label>Rodada
         <select id="run"></select>
       </label>
@@ -98,11 +207,13 @@
       <div class="stats">
         <div class="stat"><span>Em R</span><b id="inr">0</b></div>
         <div class="stat" id="violbox"><span>Violações</span><b id="viol">0</b></div>
+        <div class="stat wide"><span>Modo no replay</span><b id="rmode">—</b></div>
       </div>
       <div id="banner" class="banner" role="status"></div>
       <div id="now" class="note">antes do primeiro evento</div>
       <ol id="tape" aria-label="Eventos recentes"></ol>
       <p class="note">Espaço pausa. Setas andam um evento. O exemplo sintético não é a suíte da Oracle.</p>
+      </div>
     </aside>
   </main>
   <script src="/replay.js"></script>
@@ -181,8 +292,12 @@
 
     const SETS = [[0,1,2],[1,3,5],[2,3,6],[0,3,4],[2,4,5],[0,5,6],[1,4,6]];
 
-    function render() {
-      const state = index < 0 ? R.initialState() : R.at(events, index);
+    let view = "live";
+    let replaySource = "nenhuma rodada";
+    let liveSource = "conectando…";
+
+    /** Desenha o plano de Fano para um estado (ao vivo ou replay). */
+    function paint(state) {
       document.querySelectorAll(".quorum").forEach((el) => {
         const ids = el.getAttribute("data-set").split(",").map(Number).sort((a, b) => a - b);
         const on = state.inR.some((inside, pid) => {
@@ -205,10 +320,64 @@
         else if (state.requesting[i]) sub.textContent = "pedindo";
         else sub.textContent = "livre";
       }
+      paintResource(state);
+    }
+
+    const RES = { x: 478, y: 14, w: 150, h: 138 };
+    const SVGNS = "http://www.w3.org/2000/svg";
+
+    /** Quadrado do recurso R: quantos processos estão em R agora e quais. */
+    function paintResource(state) {
+      const inside = [];
+      state.inR.forEach((on, pid) => { if (on) inside.push(pid); });
+      const n = inside.length;
+      document.getElementById("res-box").setAttribute("class", "res-box" + (n > 1 ? " many" : n === 1 ? " one" : ""));
+      const count = document.getElementById("res-count");
+      count.textContent = String(n);
+      count.setAttribute("class", "res-count" + (n > 1 ? " many" : ""));
+      document.getElementById("res-sub").textContent =
+        n === 0 ? "ninguém acessando" : n === 1 ? "processo acessando" : "processos acessando";
+      const chips = document.getElementById("res-chips");
+      const links = document.getElementById("res-links");
+      chips.replaceChildren();
+      links.replaceChildren();
+      const step = 20;
+      const x0 = RES.x + RES.w / 2 - ((n - 1) * step) / 2;
+      inside.forEach((pid, k) => {
+        const cx = x0 + k * step, cy = RES.y + RES.h - 20;
+        const c = document.createElementNS(SVGNS, "circle");
+        c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", "9");
+        c.setAttribute("fill", COLORS[pid]);
+        const t = document.createElementNS(SVGNS, "text");
+        t.setAttribute("class", "res-chip-label");
+        t.setAttribute("x", cx); t.setAttribute("y", cy + 3.5); t.setAttribute("text-anchor", "middle");
+        t.textContent = String(pid);
+        chips.append(c, t);
+        // linha tracejada do nó até a borda mais próxima do quadrado
+        const [px, py] = POINTS[pid];
+        const tx = Math.max(RES.x, Math.min(px, RES.x + RES.w));
+        const ty = Math.max(RES.y, Math.min(py, RES.y + RES.h));
+        const line = document.createElementNS(SVGNS, "line");
+        line.setAttribute("class", "res-link");
+        line.setAttribute("x1", px); line.setAttribute("y1", py);
+        line.setAttribute("x2", tx); line.setAttribute("y2", ty);
+        line.setAttribute("stroke", COLORS[pid]);
+        links.appendChild(line);
+      });
+    }
+
+    function render() {
+      const state = index < 0 ? R.initialState() : R.at(events, index);
+      if (view !== "replay") return;
+      paint(state);
       const n = state.inR.filter(Boolean).length;
       document.getElementById("inr").textContent = String(n);
-      document.getElementById("viol").textContent = String(state.violations);
       document.getElementById("violbox").classList.toggle("bad", state.violations > 0);
+      document.getElementById("viol").textContent = state.transitionViolations
+        ? `${state.violations} (${state.transitionViolations} na troca)` : String(state.violations);
+      document.getElementById("rmode").textContent = state.sync == null
+        ? "sem eventos de modo neste log"
+        : `Maekawa ${state.sync ? "ligado" : "desligado"} · época ${state.epoch}${state.settled ? "" : " · propagando"}`;
       const banner = document.getElementById("banner");
       banner.classList.toggle("show", state.overlap);
       banner.textContent = state.overlap ? "Sobreposição: mais de um processo em R." : "";
@@ -232,7 +401,12 @@
     function describe(e) {
       const id = e.request_id ? ` ${e.request_id.client_id}.${e.request_id.seq}` : "";
       if (e.event === "BEGIN" || e.event === "END") return `${e.event} ${e.from || ""}${id}`;
-      if (e.event === "VIOLATION") return `VIOLATION active=${e.active}`;
+      if (e.event === "VIOLATION") return `VIOLATION active=${e.active}${e.transition ? " (troca de modo)" : ""}`;
+      if (e.event === "MODE_INIT") return `MODO inicial: Maekawa ${e.sync_enabled ? "ligado" : "desligado"} · época ${e.epoch}`;
+      if (e.event === "MODE_CHANGE") return `MODO → Maekawa ${e.sync_enabled ? "ligado" : "desligado"} · época ${e.epoch}`;
+      if (e.event === "MODE_SETTLED") return `MODO confirmado pelos 7 nós · época ${e.epoch} (${e.after_ms} ms)`;
+      if (e.event === "COUNTERS_RESET") return `CONTADORES zerados (antes: ${e.before ? e.before.violations : "?"} violações)`;
+      if (e.event === "CS_CHANGE") return `SEÇÃO CRÍTICA → ${e.cs_min_ms}–${e.cs_max_ms} ms`;
       return `${e.event} ${e.process || ""} → ${e.peer || ""}${id}`;
     }
 
@@ -264,7 +438,8 @@
       events = list.slice().sort((a, b) => String(a.wall_clock || "").localeCompare(String(b.wall_clock || "")));
       events = events.filter(R.keep);
       index = -1;
-      document.getElementById("source").textContent = `${label} · ${events.length} eventos`;
+      replaySource = `${label} · ${events.length} eventos`;
+      if (view === "replay") document.getElementById("source").textContent = replaySource;
       render();
     }
 
@@ -288,7 +463,8 @@
     document.getElementById("back").addEventListener("click", () => { stop(); arm(index - 1); });
     scrub.addEventListener("input", () => { stop(); arm(Number(scrub.value)); });
     runSel.addEventListener("change", () => loadRun(runSel.value).catch((err) => {
-      document.getElementById("source").textContent = String(err);
+      replaySource = String(err);
+      if (view === "replay") document.getElementById("source").textContent = replaySource;
     }));
     document.getElementById("files").addEventListener("change", async (ev) => {
       const parsed = [];
@@ -302,11 +478,349 @@
       setEvents(parsed, "arquivos locais");
     });
     document.addEventListener("keydown", (ev) => {
-      if (ev.target.matches("input, select, textarea")) return;
+      if (view !== "replay" || ev.target.matches("input, select, textarea")) return;
       if (ev.code === "Space") { ev.preventDefault(); playBtn.click(); }
       if (ev.code === "ArrowRight") { stop(); arm(index + 1); }
       if (ev.code === "ArrowLeft") { stop(); arm(index - 1); }
     });
+
+    // ------------------------------------------------------------ ao vivo
+    // Fala só com /api/mode e /api/stats deste servidor, que repassa ao observador.
+    const live = {
+      dot: document.getElementById("live-dot"),
+      conn: document.getElementById("live-conn"),
+      mode: document.getElementById("live-mode"),
+      epoch: document.getElementById("live-epoch"),
+      nodes: document.getElementById("live-nodes"),
+      sync: document.getElementById("live-sync"),
+      toggle: document.getElementById("live-toggle"),
+      epochs: document.getElementById("live-epochs"),
+      trans: document.getElementById("live-trans")
+    };
+    let liveMode = null;
+    let liveBusy = false;
+
+    for (let i = 0; i < 7; i++) {
+      const span = document.createElement("span");
+      span.textContent = String(i);
+      live.nodes.appendChild(span);
+    }
+
+    function liveOffline(msg) {
+      liveMode = null;
+      renderCs(null);
+      live.dot.className = "dot down";
+      live.conn.textContent = "observador fora do ar";
+      live.mode.className = "pill";
+      live.mode.textContent = "—";
+      live.epoch.textContent = "";
+      live.sync.textContent = msg || "";
+      live.toggle.disabled = true;
+      live.toggle.className = "";
+      live.toggle.textContent = "Ligar/desligar Maekawa (sem observador)";
+      live.nodes.querySelectorAll("span").forEach((el) => { el.className = ""; });
+      if (live.epochs.children.length && !live.trans.textContent.startsWith("Última leitura")) {
+        live.trans.textContent = "Última leitura antes de o observador sair. " + live.trans.textContent;
+      }
+    }
+
+    function renderLive(mode, stats) {
+      liveMode = mode;
+      live.dot.className = "dot up";
+      live.conn.textContent = "conectado";
+      live.mode.className = "pill " + (mode.sync_enabled ? "on" : "off");
+      live.mode.textContent = mode.sync_enabled ? "Maekawa ligado" : "Maekawa desligado";
+      live.epoch.textContent = `época ${mode.epoch}`;
+      const perNode = mode.node_epochs || {};
+      live.nodes.querySelectorAll("span").forEach((el, i) => {
+        const e = perNode["sync-" + i];
+        el.className = e === mode.epoch ? "ok" : "";
+        el.title = `sync-${i}: época ${e == null ? "?" : e}`;
+      });
+      live.sync.textContent = mode.settled
+        ? `${mode.acked}/${mode.nodes} nós confirmaram · há ${Math.round(mode.since_ms / 1000)} s`
+        : `propagando: ${mode.acked}/${mode.nodes} nós confirmaram`;
+      renderCs(mode);
+      if (!liveBusy) {
+        live.toggle.disabled = false;
+        live.toggle.className = mode.sync_enabled ? "danger" : "ok";
+        live.toggle.textContent = mode.sync_enabled ? "Desligar Maekawa" : "Ligar Maekawa";
+      }
+      if (stats) {
+        live.epochs.replaceChildren();
+        for (const ep of (stats.epochs || []).slice(-6)) {
+          const tr = document.createElement("tr");
+          if (ep.epoch === mode.epoch) tr.className = "current";
+          const cells = [ep.epoch, ep.sync_enabled ? "ligado" : "desligado", ep.begins, ep.max_active, ep.violations];
+          cells.forEach((v, i) => {
+            const td = document.createElement("td");
+            td.textContent = String(v);
+            if (i === 4 && v > 0) td.className = "bad";
+            tr.appendChild(td);
+          });
+          live.epochs.appendChild(tr);
+        }
+        live.trans.textContent = `Na troca de modo: ${stats.transition_violations || 0} violação(ões) · em R agora: ${stats.active || 0}`;
+      }
+    }
+
+    async function pollLive() {
+      try {
+        const [m, st] = await Promise.all([fetch("/api/mode"), fetch("/api/stats")]);
+        const mode = await m.json();
+        if (!m.ok) { liveOffline(mode.error); return; }
+        renderLive(mode, st.ok ? await st.json() : null);
+      } catch (err) {
+        liveOffline("abra por scripts/viz.sh para o controle ao vivo");
+      }
+    }
+
+    live.toggle.addEventListener("click", async () => {
+      if (!liveMode || liveBusy) return;
+      const next = !liveMode.sync_enabled;
+      liveBusy = true;
+      live.toggle.disabled = true;
+      live.toggle.textContent = next ? "ligando…" : "desligando…";
+      try {
+        const res = await fetch("/api/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sync_enabled: next })
+        });
+        const body = await res.json();
+        if (!res.ok) live.sync.textContent = body.error || `erro ${res.status}`;
+      } catch (err) {
+        live.sync.textContent = String(err);
+      } finally {
+        liveBusy = false;
+        pollLive();
+      }
+    });
+
+    // ------------------------------------------------------------ seção crítica
+    const csMin = document.getElementById("cs-min");
+    const csMax = document.getElementById("cs-max");
+    const csApply = document.getElementById("cs-apply");
+    const csStatus = document.getElementById("cs-status");
+    let csDirty = false;
+    let csCurrent = null;
+
+    /** O que os nós confirmaram: [min, max] se todos iguais, senão null. */
+    function nodesCs(mode) {
+      const list = Object.values((mode && mode.node_cs) || {}).filter(Boolean);
+      if (!list.length) return null;
+      const [a, b] = list[0];
+      return list.every(([x, y]) => x === a && y === b) ? { min: a, max: b, n: list.length } : { mixed: true, n: list.length };
+    }
+
+    function renderCs(mode) {
+      const enabled = !!mode;
+      document.getElementById("live-reset").disabled = !enabled;
+      csApply.disabled = !enabled;
+      document.querySelectorAll(".cs-mult").forEach((b) => { b.disabled = !enabled; });
+      if (!mode) { csStatus.textContent = ""; return; }
+      const cur = nodesCs(mode);
+      csCurrent = cur && !cur.mixed ? cur : null;
+      if (csCurrent && !csDirty && document.activeElement !== csMin && document.activeElement !== csMax) {
+        csMin.value = String(csCurrent.min);
+        csMax.value = String(csCurrent.max);
+      }
+      const target = mode.cs_min_ms != null ? `pedido ${mode.cs_min_ms}–${mode.cs_max_ms} ms · ${mode.cs_acked}/${mode.nodes} nós aplicaram` : "padrão do ConfigMap (CS_MIN_MS/CS_MAX_MS)";
+      const now = !cur ? "nós ainda sem resposta" : cur.mixed ? "nós com valores diferentes" : `nós em ${cur.min}–${cur.max} ms`;
+      csStatus.textContent = `${now} · ${target}`;
+    }
+
+    async function sendCs(min, max) {
+      min = Math.round(min); max = Math.round(max);
+      if (!(min >= 0 && max >= min && max <= 60000)) {
+        csStatus.textContent = "precisa 0 ≤ mínimo ≤ máximo ≤ 60000 ms";
+        return;
+      }
+      csApply.disabled = true;
+      try {
+        const res = await fetch("/api/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cs_min_ms: min, cs_max_ms: max })
+        });
+        const body = await res.json();
+        if (!res.ok) csStatus.textContent = body.error || `erro ${res.status}`;
+        else csDirty = false;
+      } catch (err) {
+        csStatus.textContent = String(err);
+      } finally {
+        pollLive();
+      }
+    }
+
+    [csMin, csMax].forEach((el) => el.addEventListener("input", () => { csDirty = true; }));
+    csApply.addEventListener("click", () => sendCs(Number(csMin.value), Number(csMax.value)));
+    document.querySelectorAll(".cs-mult").forEach((btn) => btn.addEventListener("click", () => {
+      const k = Number(btn.dataset.mult);
+      const base = csCurrent || { min: Number(csMin.value) || 0, max: Number(csMax.value) || 0 };
+      const min = Math.max(0, base.min * k), max = Math.max(min, Math.min(60000, base.max * k));
+      csMin.value = String(Math.round(min)); csMax.value = String(Math.round(max));
+      sendCs(min, max);
+    }));
+
+    // ------------------------------------------------------------ zerar contadores
+    // Zera no observador (violações, BEGIN/END, máximo em R, tabela por época). O contador desta
+    // tela zera quando o COUNTERS_RESET chega pelo fluxo ao vivo, no mesmo ponto do log.
+    document.getElementById("live-reset").addEventListener("click", async () => {
+      const btn = document.getElementById("live-reset");
+      const status = document.getElementById("reset-status");
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const body = await res.json();
+        status.textContent = res.ok ? `zerado às ${new Date().toLocaleTimeString()}` : (body.error || `erro ${res.status}`);
+      } catch (err) {
+        status.textContent = String(err);
+      } finally {
+        pollLive();
+      }
+    });
+
+    // ------------------------------------------------------------ pods (só no modo --k8s)
+    const podBtns = {
+      finite: document.getElementById("restart-finite"),
+      continuous: document.getElementById("restart-continuous"),
+      stop: document.getElementById("stop-clients")
+    };
+    const restartStatus = document.getElementById("restart-status");
+    const clientsStatus = document.getElementById("clients-status");
+
+    function renderInfo(info) {
+      const k8s = info && info.source === "k8s";
+      const busy = !!(info && info.restart && info.restart.running);
+      Object.values(podBtns).forEach((b) => { b.disabled = !k8s || busy; });
+      if (!k8s) {
+        clientsStatus.textContent = "";
+        restartStatus.textContent = info ? "Disponível só com scripts/viz.sh --k8s." : "";
+        return;
+      }
+      const c = info.clients || {};
+      const total = (c.running || 0) + (c.pending || 0);
+      clientsStatus.textContent = total
+        ? `${c.running || 0} clientes rodando${c.continuous ? " · contínuo" : ""}`
+        : (c.succeeded || c.failed ? `clientes terminaram (${c.succeeded || 0} ok, ${c.failed || 0} falha)` : "sem clientes");
+      const r = info.restart || {};
+      restartStatus.textContent = r.error ? `${r.step}: ${r.error}` : (r.step || "");
+    }
+
+    async function pollInfo() {
+      try {
+        const res = await fetch("/api/info");
+        renderInfo(res.ok ? await res.json() : null);
+      } catch {
+        renderInfo(null);
+      }
+    }
+
+    async function podAction(url, body, question) {
+      if (question && !window.confirm(question)) return;
+      Object.values(podBtns).forEach((b) => { b.disabled = true; });
+      try {
+        const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const out = await res.json();
+        if (!res.ok) restartStatus.textContent = out.error || `erro ${res.status}`;
+      } catch (err) {
+        restartStatus.textContent = String(err);
+      }
+      pollInfo();
+    }
+
+    podBtns.finite.addEventListener("click", () => podAction("/api/restart", { continuous: false },
+      "Reiniciar os pods? Nós e observador voltam ao estado inicial (modo, sleep e contadores do ConfigMap) e os 7 clientes rodam de novo."));
+    podBtns.continuous.addEventListener("click", () => podAction("/api/restart", { continuous: true },
+      "Iniciar rodada contínua? Nós e observador voltam ao estado inicial e os 7 clientes pedem sem parar até você clicar em Parar clientes."));
+    podBtns.stop.addEventListener("click", () => podAction("/api/stop-clients", {}, null));
+    setInterval(pollInfo, 2000);
+    pollInfo();
+
+    // ------------------------------------------------------------ fluxo ao vivo (SSE)
+    let liveState = R.initialState();
+    let liveTape = [];
+    let paintPending = false;
+
+    function livePaint() {
+      paintPending = false;
+      if (view !== "live") return;
+      paint(liveState);
+      const n = liveState.inR.filter(Boolean).length;
+      document.getElementById("live-inr").textContent = String(n);
+      document.getElementById("live-viol").textContent = liveState.transitionViolations
+        ? `${liveState.violations} (${liveState.transitionViolations} na troca)` : String(liveState.violations);
+      document.getElementById("live-violbox").classList.toggle("bad", liveState.violations > 0);
+      const banner = document.getElementById("live-banner");
+      banner.classList.toggle("show", n > 1);
+      banner.textContent = n > 1 ? `Sobreposição agora: ${n} processos em R.` : "";
+      const tape = document.getElementById("live-tape");
+      tape.replaceChildren(...liveTape.map((e) => {
+        const li = document.createElement("li");
+        li.textContent = describe(e);
+        return li;
+      }));
+      document.getElementById("source").textContent = liveSource;
+    }
+
+    function schedulePaint() {
+      if (paintPending) return;
+      paintPending = true;
+      // temporizador e não requestAnimationFrame: rAF para quando a janela não está sendo
+      // desenhada, e a tela tem que estar em dia quando voltar a aparecer
+      setTimeout(livePaint, 50);
+    }
+
+    function liveApply(e) {
+      R.apply(liveState, e);
+      liveTape.push(e);
+      if (liveTape.length > 10) liveTape.shift();
+    }
+
+    function connectLive() {
+      const es = new EventSource("/api/live");
+      es.onmessage = (msg) => {
+        const m = JSON.parse(msg.data);
+        if (m.type === "snapshot") {
+          liveState = R.initialState();
+          liveTape = [];
+          for (const e of m.events) liveApply(e);
+          liveSource = `ao vivo · ${m.status}`;
+        } else if (m.type === "event") {
+          liveApply(m.event);
+        } else if (m.type === "status") {
+          liveSource = `ao vivo · ${m.status}`;
+        }
+        schedulePaint();
+      };
+      es.onerror = () => {
+        liveSource = "ao vivo · sem conexão com scripts/viz.sh (tentando de novo)";
+        schedulePaint();
+      };
+    }
+
+    // ------------------------------------------------------------ abas
+    function setView(next) {
+      view = next;
+      document.getElementById("tab-live").setAttribute("aria-selected", String(next === "live"));
+      document.getElementById("tab-replay").setAttribute("aria-selected", String(next === "replay"));
+      document.getElementById("pane-live").hidden = next !== "live";
+      document.getElementById("pane-replay").hidden = next !== "replay";
+      if (next === "live") {
+        stop();
+        livePaint();
+      } else {
+        document.getElementById("source").textContent = replaySource;
+        render();
+      }
+    }
+    document.getElementById("tab-live").addEventListener("click", () => setView("live"));
+    document.getElementById("tab-replay").addEventListener("click", () => setView("replay"));
+
+    connectLive();
+    setInterval(pollLive, 1000);
+    pollLive();
 
     drawStatic();
     render();
@@ -319,9 +833,9 @@
         runSel.appendChild(opt);
       }
       if (runs.length) return loadRun(runs[0].id);
-      document.getElementById("source").textContent = "sem logs/ — escolha arquivos .jsonl";
+      replaySource = "sem logs/ — escolha arquivos .jsonl";
     }).catch(() => {
-      document.getElementById("source").textContent = "abra por scripts/viz.sh para listar as rodadas";
+      replaySource = "abra por scripts/viz.sh para listar as rodadas";
     });
   </script>
 </body>

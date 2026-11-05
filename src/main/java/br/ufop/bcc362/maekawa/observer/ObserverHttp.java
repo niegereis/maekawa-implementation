@@ -19,8 +19,11 @@ import java.util.concurrent.Executors;
  * API HTTP do observador, para o frontend de observabilidade. So JDK (com.sun.net.httpserver).
  *
  * GET  /mode     modo atual, epoca e quantos nos confirmaram
- * POST /mode     {"sync_enabled": false} (ou ?sync_enabled=false) liga/desliga o Maekawa nos N nos
+ * POST /mode     {"sync_enabled": false} (ou ?sync_enabled=false) liga/desliga o Maekawa nos N nos;
+ *                {"cs_min_ms": 2000, "cs_max_ms": 4000} troca a duracao da secao critica simulada.
+ *                Os dois podem ir juntos; pelo menos um e obrigatorio.
  * GET  /stats    contadores do observador (total e por epoca) mais o modo
+ * POST /reset    zera os contadores (violacoes, BEGIN/END, maximo em R, por epoca); devolve /stats
  * GET  /healthz  "ok"
  *
  * Todas as respostas sao JSON e levam Access-Control-Allow-Origin (HTTP_CORS_ORIGIN, padrao "*"),
@@ -38,6 +41,15 @@ public final class ObserverHttp implements AutoCloseable {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/mode", this::mode);
         server.createContext("/stats", this::stats);
+        server.createContext("/reset", ex -> {
+            if (preflight(ex)) return;
+            if (!ex.getRequestMethod().equals("POST")) {
+                send(ex, 405, Map.of("error", "use POST"));
+                return;
+            }
+            observer.resetCounters();
+            send(ex, 200, statsBody());
+        });
         server.createContext("/healthz", ex -> {
             if (preflight(ex)) return;
             send(ex, 200, Map.of("status", "ok"));
@@ -58,18 +70,30 @@ public final class ObserverHttp implements AutoCloseable {
         switch (ex.getRequestMethod()) {
             case "GET" -> send(ex, 200, observer.modeStatus());
             case "POST", "PUT" -> {
-                Boolean sync;
+                Change c;
                 try {
-                    sync = requestedSync(ex);
+                    c = requestedChange(ex);
                 } catch (IllegalArgumentException e) {
                     send(ex, 400, Map.of("error", e.getMessage()));
                     return;
                 }
-                if (sync == null) {
-                    send(ex, 400, Map.of("error", "informe sync_enabled (true|false) no corpo JSON ou na query"));
+                if (c.sync == null && c.csMin == null) {
+                    send(ex, 400, Map.of("error", "informe sync_enabled (true|false) e/ou cs_min_ms + cs_max_ms"));
                     return;
                 }
-                send(ex, 200, observer.setSyncEnabled(sync));
+                try {
+                    // valida a secao critica antes de trocar o modo, para nao aplicar meia mudanca
+                    if (c.csMin != null && (c.csMin < 0 || c.csMax < c.csMin || c.csMax > Observer.CS_LIMIT_MS)) {
+                        throw new IllegalArgumentException("secao critica invalida: precisa 0 <= cs_min_ms <= cs_max_ms <= "
+                                + Observer.CS_LIMIT_MS);
+                    }
+                    Map<String, Object> status = null;
+                    if (c.sync != null) status = observer.setSyncEnabled(c.sync);
+                    if (c.csMin != null) status = observer.setCriticalSection(c.csMin, c.csMax);
+                    send(ex, 200, status);
+                } catch (IllegalArgumentException e) {
+                    send(ex, 400, Map.of("error", e.getMessage()));
+                }
             }
             default -> send(ex, 405, Map.of("error", "use GET ou POST"));
         }
@@ -81,39 +105,68 @@ public final class ObserverHttp implements AutoCloseable {
             send(ex, 405, Map.of("error", "use GET"));
             return;
         }
-        Map<String, Object> body = new LinkedHashMap<>(observer.summary());
-        body.put("mode", observer.modeStatus());
-        send(ex, 200, body);
+        send(ex, 200, statsBody());
     }
 
-    /** Le sync_enabled da query (?sync_enabled=false) ou do corpo JSON ({"sync_enabled": false}). */
-    private static Boolean requestedSync(HttpExchange ex) throws IOException {
-        String q = ex.getRequestURI().getRawQuery();
-        if (q != null) {
-            for (String kv : q.split("&")) {
+    private Map<String, Object> statsBody() {
+        Map<String, Object> body = new LinkedHashMap<>(observer.summary());
+        body.put("mode", observer.modeStatus());
+        return body;
+    }
+
+    private record Change(Boolean sync, Long csMin, Long csMax) {
+    }
+
+    /**
+     * Le a mudanca da query (?sync_enabled=false&cs_min_ms=..&cs_max_ms=..) ou do corpo JSON
+     * ({"sync_enabled": false, "cs_min_ms": 2000, "cs_max_ms": 4000}). Query tem precedencia.
+     */
+    private static Change requestedChange(HttpExchange ex) throws IOException {
+        Map<String, String> q = new LinkedHashMap<>();
+        String raw = ex.getRequestURI().getRawQuery();
+        if (raw != null) {
+            for (String kv : raw.split("&")) {
                 int i = kv.indexOf('=');
                 if (i < 0) continue;
-                String k = URLDecoder.decode(kv.substring(0, i), StandardCharsets.UTF_8);
-                if (k.equals("sync_enabled") || k.equals("sync")) {
-                    return parseBool(URLDecoder.decode(kv.substring(i + 1), StandardCharsets.UTF_8));
-                }
+                q.put(URLDecoder.decode(kv.substring(0, i), StandardCharsets.UTF_8),
+                        URLDecoder.decode(kv.substring(i + 1), StandardCharsets.UTF_8));
             }
         }
-        byte[] raw;
+        JsonNode body = null;
+        byte[] bytes;
         try (InputStream in = ex.getRequestBody()) {
-            raw = in.readNBytes(4096);
+            bytes = in.readNBytes(4096);
         }
-        if (raw.length == 0) return null;
-        JsonNode n;
+        if (q.isEmpty() && bytes.length > 0) {
+            try {
+                body = Json.MAPPER.readTree(bytes);
+            } catch (IOException e) {
+                throw new IllegalArgumentException("corpo nao e JSON valido");
+            }
+            if (body != null && !body.isObject()) throw new IllegalArgumentException("corpo deve ser um objeto JSON");
+        }
+        String syncRaw = field(q, body, "sync_enabled", "sync");
+        Boolean sync = syncRaw == null ? null : parseBool(syncRaw);
+        String min = field(q, body, "cs_min_ms"), max = field(q, body, "cs_max_ms");
+        if ((min == null) != (max == null)) throw new IllegalArgumentException("informe cs_min_ms e cs_max_ms juntos");
+        Long csMin = min == null ? null : parseMs(min), csMax = max == null ? null : parseMs(max);
+        return new Change(sync, csMin, csMax);
+    }
+
+    private static String field(Map<String, String> q, JsonNode body, String... names) {
+        for (String n : names) {
+            if (q.containsKey(n)) return q.get(n);
+            if (body != null && body.has(n) && !body.get(n).isNull()) return body.get(n).asText();
+        }
+        return null;
+    }
+
+    private static long parseMs(String s) {
         try {
-            n = Json.MAPPER.readTree(raw);
-        } catch (IOException e) {
-            throw new IllegalArgumentException("corpo nao e JSON valido");
+            return Long.parseLong(s.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("milissegundos invalidos: " + s);
         }
-        JsonNode v = n == null ? null : n.has("sync_enabled") ? n.get("sync_enabled") : n.get("sync");
-        if (v == null || v.isNull()) return null;
-        if (v.isBoolean()) return v.booleanValue();
-        return parseBool(v.asText());
     }
 
     private static boolean parseBool(String s) {

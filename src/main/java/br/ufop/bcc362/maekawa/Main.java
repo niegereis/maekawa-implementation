@@ -27,7 +27,7 @@ import java.util.function.Function;
  *           SYNC_ENABLED=true|false (modo inicial; o observador pode trocar em tempo de execucao),
  *           CS_MIN_MS=200, CS_MAX_MS=1000,
  *           GATE_HOLD="REQUEST:sync-0>sync-1,...", GATE_RELEASE_AFTER_MS=3000
- * client:   CLIENT_ID (ou JOB_COMPLETION_INDEX), TARGET=sync-<id>, ACCESSES=20,
+ * client:   CLIENT_ID (ou JOB_COMPLETION_INDEX), TARGET=sync-<id>, ACCESSES=20 (0 = continuo, sem fim),
  *           THINK_MIN_MS=1000, THINK_MAX_MS=5000, START_DELAY_MS=0, REQUEST_TIMEOUT_MS=60000.
  *           Qualquer um desses quatro aceita a forma X_BY_CLIENT="v0,v1,...,v6" para carga desigual
  *           (ex.: ACCESSES_BY_CLIENT="1,1,1,0,0,0,0" no cenario de deadlock).

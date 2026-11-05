@@ -46,6 +46,15 @@ class ObserverHttpTest {
                 assertEquals(1, post(base + "/mode?sync_enabled=false", "", 200).get("epoch").asLong());
                 assertEquals(2, post(base + "/mode?sync_enabled=true", "", 200).get("epoch").asLong());
 
+                JsonNode cs = post(base + "/mode", "{\"cs_min_ms\": 1500, \"cs_max_ms\": 3000}", 200);
+                assertEquals(1500, cs.get("cs_min_ms").asLong());
+                assertEquals(3000, cs.get("cs_max_ms").asLong());
+                assertEquals(2, cs.get("epoch").asLong(), "secao critica nao abre epoca");
+                post(base + "/mode", "{\"cs_min_ms\": 1500}", 400);
+                post(base + "/mode", "{\"cs_min_ms\": 3000, \"cs_max_ms\": 1000}", 400);
+                post(base + "/mode", "{\"cs_min_ms\": 0, \"cs_max_ms\": 999999}", 400);
+                post(base + "/mode", "{\"sync_enabled\": false, \"cs_min_ms\": -1, \"cs_max_ms\": 5}", 400);
+                assertTrue(obs.syncEnabled(), "pedido invalido nao aplica meia mudanca");
                 post(base + "/mode", "{\"sync_enabled\": \"talvez\"}", 400);
                 post(base + "/mode", "{}", 400);
                 post(base + "/mode", "nao e json", 400);
@@ -54,6 +63,12 @@ class ObserverHttpTest {
                 assertEquals(0, stats.get("violations").asInt());
                 assertEquals(3, stats.get("epochs").size());
                 assertEquals(2, stats.get("mode").get("epoch").asLong());
+
+                JsonNode reset = post(base + "/reset", "", 200);
+                assertEquals(0, reset.get("violations").asInt());
+                assertEquals(1, reset.get("epochs").size(), "so a epoca atual depois do reset");
+                assertEquals(2, reset.get("mode").get("epoch").asLong(), "reset nao muda a epoca");
+                get(base + "/reset", 405);
 
                 HttpResponse<String> pre = http.send(HttpRequest.newBuilder(URI.create(base + "/mode"))
                         .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());

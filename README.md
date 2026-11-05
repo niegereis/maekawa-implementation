@@ -73,6 +73,7 @@ Portas: `localhost:7200..7206`, observador `:7300` e API HTTP do observador `:73
 | `GET /mode` | modo atual, época, quantos nós confirmaram (`acked`/`nodes`), `settled` e a época de cada nó |
 | `POST /mode` | corpo `{"sync_enabled": false}` (ou `?sync_enabled=false`): troca o modo e anuncia aos 7 nós |
 | `GET /stats` | contadores do observador, no total e por época, mais o modo |
+| `POST /reset` | zera os contadores (violações, BEGIN/END, máximo em R, tabela por época); devolve o mesmo que `/stats` |
 | `GET /healthz` | `{"status":"ok"}` |
 
 As respostas são JSON com `Access-Control-Allow-Origin` (`HTTP_CORS_ORIGIN`, padrão `*`).
@@ -145,13 +146,31 @@ Resultado de referência numa máquina local (7 clientes × 5 acessos, sem pausa
 
 ## Ver os nós e os logs
 
-O desenho dos 7 processos **não** é o Grafana. É o replay local, com pausa:
+O desenho dos 7 processos **não** é o Grafana. É a página `viz/`, que abre **ao vivo**: votos (`LOCKED`/`RELEASE`), quem está em R (`BEGIN`/`END`) e sobreposições aparecem enquanto a rodada acontece.
 
 ```bash
-scripts/viz.sh          # http://127.0.0.1:8765
+scripts/viz.sh          # rodada do scripts/local-run.sh · http://127.0.0.1:8765
+scripts/viz.sh --k8s    # rodada no kind/k3s (run-experiment.sh) · http://127.0.0.1:8765
 ```
 
-A página lê `logs/<overlay>/<rep>/*.jsonl` (a suíte grava isso) ou arquivos escolhidos na tela. `LOCKED` acende o voto, `RELEASE`/`RELINQUISH` devolve, `BEGIN`/`END` do observador marcam quem está em R. A rodada "exemplo sintético" só ensina os botões; não é a suíte da Oracle. Espaço pausa, setas andam um evento.
+- **Sem flag:** segue os `*.jsonl` da rodada mais recente em `logs/` (troca sozinha quando começa outra) e fala com o observador em `127.0.0.1:7380`.
+- **`--k8s`:** segue `kubectl logs -f` do observador e dos `sync-i` e mantém sozinho um `port-forward` do observador em `127.0.0.1:18080`, refeito quando o `run-experiment.sh` recria o pod. Não precisa de `port-forward` manual.
+- `OBSERVER_URL`, `LIVE_DIR` e `K8S_NAMESPACE` sobrescrevem os padrões.
+
+Aba **Ao vivo**:
+
+- **Experimento:** liga e desliga o Maekawa, mostra a época, quais dos 7 nós confirmaram a troca e as violações por época (as da troca ficam à parte).
+- **Seção crítica:** muda o sleep dentro de R (`cs_min_ms`–`cs_max_ms`) em todos os nós, a partir do próximo acesso de cada um. "Sleep ×2" dobra o valor atual, o que deixa os votos e as sobreposições mais fáceis de acompanhar. Não abre época nova. Também pela API: `POST /mode` com `{"cs_min_ms": 2000, "cs_max_ms": 4000}`.
+- **Em R agora / Violações** e os últimos eventos.
+- **Zerar contadores:** zera violações, BEGIN/END, máximo em R e a tabela por época no observador, para medir um trecho da rodada do zero (por exemplo, depois de religar o Maekawa). Não mexe no modo, na época nem em quem está em R. Fica no log como `COUNTERS_RESET`, com os valores anteriores. O `verify.py` continua contando todas as violações do log da rodada.
+- **Pods** (só com `--k8s`), com o número de clientes rodando ao lado:
+  - **Reiniciar pods:** recria o observador e os 7 nós com estado limpo (modo, sleep e contadores voltam ao ConfigMap) e dispara de novo o Job de clientes com a mesma especificação. É o miolo do `run-experiment.sh`, sem trocar de overlay nem recolher logs.
+  - **Rodada contínua:** igual, mas os clientes pedem sem parar (`ACCESSES=0` no env do Job, que vence o ConfigMap) até "Parar clientes". Serve para demonstração; as rodadas oficiais continuam finitas.
+  - **Parar clientes:** apaga o Job de clientes; nós e observador continuam no ar.
+
+Por que a tela "para": cada cliente faz `ACCESSES` pedidos e sai (o enunciado pede 10 a 50, e o `verify.py` confere um COMMITTED por pedido). O Job tem `restartPolicy: Never` e `backoffLimit: 0`, então não recria clientes, e é apagado uma hora depois de terminar (`ttlSecondsAfterFinished: 3600`). Nós e observador ficam no ar, mas sem carga. `ACCESSES=0` liga o modo contínuo também no `scripts/local-run.sh` (`scripts/local-run.sh 0 1000 3000`), que então roda até Ctrl-C.
+
+A aba **Replay** reproduz rodadas gravadas: `logs/<overlay>/<rep>/*.jsonl` ou arquivos escolhidos na tela, com pausa, passo e velocidade. A rodada "exemplo sintético" só ensina os botões; não é a suíte da Oracle. Espaço pausa, setas andam um evento.
 
 O Grafana mostra **gráficos e a lista de logs**, no mesmo cluster, namespace `observability` (o experimento não apaga). Sem porta pública:
 

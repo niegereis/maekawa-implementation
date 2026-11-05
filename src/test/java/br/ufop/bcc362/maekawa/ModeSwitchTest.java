@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Timeout;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -109,20 +110,106 @@ class ModeSwitchTest {
         }
     }
 
+    @Test
+    @Timeout(30)
+    void secaoCriticaMudaEmTempoDeExecucaoSemAbrirEpoca() throws Exception {
+        try (TestCluster c = new TestCluster(Variant.RESOLUTION, 5, 10, null, true)) {
+            c.awaitSettled();
+            c.observer.setCriticalSection(300, 300);
+            long deadline = System.nanoTime() + 5_000_000_000L;
+            while (!Integer.valueOf(7).equals(c.observer.modeStatus().get("cs_acked"))) {
+                if (System.nanoTime() > deadline) fail("nos nao confirmaram a secao critica: " + c.observer.modeStatus());
+                Thread.sleep(5);
+            }
+            assertEquals(0, c.observer.epoch(), "trocar a secao critica nao abre epoca");
+            for (Node n : c.nodes) assertEquals(new Node.CriticalSection(300, 300), n.criticalSection());
+
+            Node p3 = c.node(3);
+            RequestId id = new RequestId(3, 1);
+            p3.acquire(id);
+            long t0 = System.nanoTime();
+            p3.enter(id);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            p3.release(id);
+            assertTrue(ms >= 300, "enter() dormiu " + ms + " ms; esperado >= 300");
+
+            assertThrows(IllegalArgumentException.class, () -> c.observer.setCriticalSection(500, 100));
+            assertThrows(IllegalArgumentException.class, () -> c.observer.setCriticalSection(-1, 100));
+        }
+    }
+
+    @Test
+    @Timeout(60)
+    void resetZeraOsContadoresSemMexerNoModo() throws Exception {
+        try (TestCluster c = new TestCluster(Variant.RESOLUTION, 50, 100, null, false)) {
+            c.awaitSettled();
+            runClients(c, 3, 0);
+            assertTrue(c.observer.violations() > 0);
+            c.switchMode(true);
+
+            Map<String, Object> after = c.observer.resetCounters();
+            assertEquals(0, after.get("violations"));
+            assertEquals(0, after.get("begins"));
+            assertEquals(0, after.get("transition_violations"));
+            assertEquals(1, ((List<?>) after.get("epochs")).size(), "so a epoca atual");
+            assertEquals(1, c.observer.epoch(), "o modo e a epoca ficam");
+            assertTrue(c.observer.syncEnabled());
+
+            runClients(c, 2, 10); // outra leva: clientes 10..16, outros endpoints
+            assertEquals(0, c.observer.violations(), "com Maekawa, depois do reset, nada");
+            assertEquals(14, (int) c.observer.summary().get("begins"));
+            assertEquals(1, c.observer.maxActive());
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void clienteContinuoPedeAteSerInterrompido() throws Exception {
+        try (TestCluster c = new TestCluster(Variant.RESOLUTION, 5, 10, null, true)) {
+            c.awaitSettled();
+            Client.Config cfg = new Client.Config(0, "sync-0", 0, 0, 0, 0, 10_000);
+            assertTrue(cfg.continuous());
+            Client cl = new Client(cfg, c.net.endpoint("client-0"), new EventLog("client-0", null, TestCluster.QUIET));
+            Thread t = Thread.ofVirtual().start(() -> {
+                try {
+                    cl.run();
+                } catch (InterruptedException ignored) {
+                }
+            });
+            long deadline = System.nanoTime() + 10_000_000_000L;
+            while (cl.committed() < 25) {
+                if (System.nanoTime() > deadline) fail("cliente continuo parou em " + cl.committed());
+                Thread.sleep(10);
+            }
+            assertTrue(t.isAlive(), "modo continuo nao termina sozinho");
+            t.interrupt();
+            t.join(5_000);
+            assertFalse(t.isAlive(), "interromper encerra o cliente");
+            assertEquals(0, cl.timedOut());
+            assertThrows(IllegalArgumentException.class, () -> new Client.Config(0, "sync-0", -1, 0, 0, 0, 1000));
+        }
+    }
+
     // ------------------------------------------------------------------ apoio
 
-    private static List<Client> runClients(TestCluster c, int accesses, long think) throws InterruptedException {
+    /** @param idOffset somado ao client_id e ao nome do endpoint, para uma segunda leva no mesmo cluster */
+    private static List<Client> runClients(TestCluster c, int accesses, int idOffset) throws InterruptedException {
         List<Client> clients = new ArrayList<>();
-        for (Thread t : startClients(c, accesses, clients)) t.join();
+        for (Thread t : startClients(c, accesses, clients, idOffset)) t.join();
         assertEquals(0, clients.stream().mapToInt(Client::timedOut).sum());
         return clients;
     }
 
     private static List<Thread> startClients(TestCluster c, int accesses, List<Client> out) {
+        return startClients(c, accesses, out, 0);
+    }
+
+    private static List<Thread> startClients(TestCluster c, int accesses, List<Client> out, int idOffset) {
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < 7; i++) {
-            Client.Config cfg = new Client.Config(i, "sync-" + i, accesses, 0, 0, 0, 30_000);
-            Client cl = new Client(cfg, c.net.endpoint("client-" + i), new EventLog("client-" + i, null, TestCluster.QUIET));
+            int id = i + idOffset;
+            Client.Config cfg = new Client.Config(id, "sync-" + i, accesses, 0, 0, 0, 30_000);
+            Client cl = new Client(cfg, c.net.endpoint("client-" + id), new EventLog("client-" + id, null, TestCluster.QUIET));
             out.add(cl);
             threads.add(Thread.ofVirtual().start(() -> {
                 try {

@@ -30,6 +30,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * O modo (Maekawa ligado ou desligado) pode mudar em tempo de execucao por MODE do observador.
  * Cada pedido fixa o modo no acquire e sai com o mesmo modo no release: um pedido que pegou
  * votos sempre os devolve, mesmo que o Maekawa seja desligado enquanto ele esta na secao critica.
+ * O MODE tambem pode trazer a duracao da secao critica simulada; ela vale a partir do proximo enter().
  */
 public final class Node implements AutoCloseable {
     private final NodeConfig cfg;
@@ -57,6 +58,15 @@ public final class Node implements AutoCloseable {
     /** Modo com que cada pedido em andamento foi admitido (acquire ate release). */
     private final Map<RequestId, Mode> admitted = new ConcurrentHashMap<>();
 
+    /** Duracao da secao critica simulada: sleep uniforme em [minMs, maxMs]. Comeca em CS_MIN_MS/CS_MAX_MS. */
+    private final AtomicReference<CriticalSection> cs;
+
+    public record CriticalSection(long minMs, long maxMs) {
+        public CriticalSection {
+            if (minMs < 0 || maxMs < minMs) throw new IllegalArgumentException("secao critica invalida: " + minMs + ".." + maxMs);
+        }
+    }
+
     /** Maekawa ligado ou nao, e a epoca em que esse valor foi anunciado pelo observador. */
     public record Mode(boolean syncEnabled, long epoch) {
     }
@@ -75,6 +85,7 @@ public final class Node implements AutoCloseable {
         this.requester = new Requester(cfg.pid(), quorum.votersOf(cfg.pid()), out);
         this.voter = new Voter(cfg.pid(), cfg.variant(), out);
         this.mode = new AtomicReference<>(new Mode(cfg.syncEnabled(), 0));
+        this.cs = new AtomicReference<>(new CriticalSection(cfg.csMinMs(), cfg.csMaxMs()));
     }
 
     public void start() {
@@ -85,6 +96,11 @@ public final class Node implements AutoCloseable {
                 "voters", quorum.votersOf(cfg.pid())));
         // pergunta o modo atual: se o pod reiniciou depois de uma troca, adota o valor do cluster
         sendInstrumentation(MessageType.MODE_QUERY, cfg.observerName(), null, mode.get().epoch());
+    }
+
+    /** Duracao da secao critica que vale para o proximo enter(). */
+    public CriticalSection criticalSection() {
+        return cs.get();
     }
 
     /** Modo que vale para o proximo pedido. */
@@ -157,7 +173,8 @@ public final class Node implements AutoCloseable {
         long epoch = admitted.getOrDefault(id, mode.get()).epoch();
         registerWithObserver(MessageType.BEGIN, MessageType.BEGIN_ACK, id, epoch);
         log.local("ENTER", id, clock.now());
-        long ms = ThreadLocalRandom.current().nextLong(cfg.csMinMs(), cfg.csMaxMs() + 1);
+        CriticalSection c = cs.get();
+        long ms = ThreadLocalRandom.current().nextLong(c.minMs(), c.maxMs() + 1);
         Thread.sleep(ms);
         log.local("EXIT", id, clock.now(), null, Map.of("held_ms", ms));
         registerWithObserver(MessageType.END, MessageType.END_ACK, id, epoch);
@@ -258,9 +275,24 @@ public final class Node implements AutoCloseable {
                     "previous_sync_enabled", prev.syncEnabled(), "previous_epoch", prev.epoch(),
                     "in_flight", admitted.size()));
         }
+        if (m.csMinMs() != null && m.csMaxMs() != null) {
+            try {
+                CriticalSection nextCs = new CriticalSection(m.csMinMs(), m.csMaxMs());
+                CriticalSection prevCs = cs.getAndSet(nextCs);
+                if (!prevCs.equals(nextCs)) {
+                    log.local("CS_CHANGE", null, lamport, null, Map.of(
+                            "cs_min_ms", nextCs.minMs(), "cs_max_ms", nextCs.maxMs(),
+                            "previous_cs_min_ms", prevCs.minMs(), "previous_cs_max_ms", prevCs.maxMs()));
+                }
+            } catch (IllegalArgumentException e) {
+                log.info("MODE com secao critica invalida, ignorada: " + e.getMessage());
+            }
+        }
+        CriticalSection c = cs.get();
         long t = clock.tick();
         Message ack = Message.of(MessageType.MODE_ACK, name, m.from(), t, null)
-                .withProcessId(cfg.pid()).withMode(next.syncEnabled(), next.epoch());
+                .withProcessId(cfg.pid()).withMode(next.syncEnabled(), next.epoch())
+                .withCriticalSection(c.minMs(), c.maxMs());
         log.message("send", ack, t, null);
         transport.send(ack);
     }

@@ -43,8 +43,8 @@ Cada nó faz dois papéis ao mesmo tempo, com estado separado:
 | `COMMITTED` | nó → cliente | request_id | instrumentação |
 | `BEGIN` / `END` | nó → observador | request_id, process_id | instrumentação |
 | `BEGIN_ACK` / `END_ACK` | observador → nó | request_id | instrumentação |
-| `MODE` | observador → nó | sync_enabled, epoch | controle do experimento |
-| `MODE_ACK` | nó → observador | sync_enabled, epoch | controle do experimento |
+| `MODE` | observador → nó | sync_enabled, epoch; cs_min_ms, cs_max_ms (opcionais) | controle do experimento |
+| `MODE_ACK` | nó → observador | sync_enabled, epoch, cs_min_ms, cs_max_ms (valores do nó) | controle do experimento |
 | `MODE_QUERY` | nó → observador | epoch (a do nó) | controle do experimento |
 
 Toda mensagem leva `from` e `lamport`; as de pedido levam `request_id`, e `BEGIN`/`END` levam também a `epoch` em que o pedido foi admitido no nó. Só as seis primeiras são **mensagens de protocolo** e entram na contagem comparada com 3√N–6√N.
@@ -116,4 +116,4 @@ Para o cenário ser determinístico sem depender de latência, o `Transport` ace
 
 ## 9. Log
 
-Uma linha JSON por evento em stdout, campos mínimos: `event`, `request_id`, `process_id`, `lamport`, `quorum_granted`, `ts_monotonic_ns`, `wall_clock`, `kind` (`protocol` | `instrumentation` | `local`). Eventos locais: ACQUIRE, ENTER, EXIT, COMMITTED, MODE_CHANGE (nó e observador), VIOLATION, MODE_INIT, MODE_SETTLED (observador). `VIOLATION` leva `epoch` e `transition` (true quando a sobreposição aconteceu durante uma troca de modo).
+Uma linha JSON por evento em stdout, campos mínimos: `event`, `request_id`, `process_id`, `lamport`, `quorum_granted`, `ts_monotonic_ns`, `wall_clock`, `kind` (`protocol` | `instrumentation` | `local`). Eventos locais: ACQUIRE, ENTER, EXIT, COMMITTED, MODE_CHANGE e CS_CHANGE (nó e observador), VIOLATION, MODE_INIT, MODE_SETTLED, COUNTERS_RESET (observador). `VIOLATION` leva `epoch` e `transition` (true quando a sobreposição aconteceu durante uma troca de modo).

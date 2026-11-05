@@ -23,6 +23,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Cada troca abre uma epoca nova. Uma violacao conta para a epoca se, no momento dela,
  * os N nos ja confirmaram a epoca e todos os acessos ativos foram admitidos nela; senao
  * ela fica na conta da transicao (pedidos do modo antigo ainda na secao critica).
+ *
+ * A duracao da secao critica simulada tambem pode ser trocada daqui (vai no mesmo MODE).
+ * Ela nao abre epoca nova: nao muda a corretude, so o ritmo. Enquanto ninguem a troca,
+ * o MODE vai sem ela e cada no fica com o CS_MIN_MS/CS_MAX_MS com que subiu.
  */
 public final class Observer implements AutoCloseable {
     public static final String NAME = "observer";
@@ -45,6 +49,11 @@ public final class Observer implements AutoCloseable {
     /** no -> ultima epoca confirmada por MODE_ACK */
     private final Map<String, Long> nodeEpoch = new TreeMap<>();
     private final Map<Long, EpochStats> epochs = new TreeMap<>();
+    /** secao critica anunciada; null ate alguem trocar pela API */
+    private Long csMinMs, csMaxMs;
+    /** no -> [min, max] confirmado no ultimo MODE_ACK */
+    private final Map<String, long[]> nodeCs = new TreeMap<>();
+    public static final long CS_LIMIT_MS = 60_000;
     private int transitionViolations;
 
     public Observer(Transport transport) {
@@ -108,6 +117,27 @@ public final class Observer implements AutoCloseable {
         return modeStatus();
     }
 
+    /**
+     * Troca a duracao da secao critica simulada nos N nos, a partir do proximo acesso de cada um.
+     * Nao abre epoca nova.
+     */
+    public synchronized Map<String, Object> setCriticalSection(long min, long max) {
+        if (min < 0 || max < min || max > CS_LIMIT_MS) {
+            throw new IllegalArgumentException("secao critica invalida: precisa 0 <= min <= max <= " + CS_LIMIT_MS);
+        }
+        Long prevMin = csMinMs, prevMax = csMaxMs;
+        csMinMs = min;
+        csMaxMs = max;
+        Map<String, Object> ev = new LinkedHashMap<>();
+        ev.put("cs_min_ms", min);
+        ev.put("cs_max_ms", max);
+        ev.put("previous_cs_min_ms", prevMin);
+        ev.put("previous_cs_max_ms", prevMax);
+        log.local("CS_CHANGE", null, clock.tick(), null, ev);
+        for (int i = 0; i < nodeCount; i++) sendMode("sync-" + i);
+        return modeStatus();
+    }
+
     public synchronized boolean syncEnabled() {
         return syncEnabled;
     }
@@ -134,6 +164,17 @@ public final class Observer implements AutoCloseable {
         Map<String, Object> perNode = new LinkedHashMap<>();
         for (int i = 0; i < nodeCount; i++) perNode.put("sync-" + i, nodeEpoch.get("sync-" + i));
         s.put("node_epochs", perNode);
+        s.put("cs_min_ms", csMinMs);
+        s.put("cs_max_ms", csMaxMs);
+        Map<String, Object> perNodeCs = new LinkedHashMap<>();
+        int csAcked = 0;
+        for (int i = 0; i < nodeCount; i++) {
+            long[] c = nodeCs.get("sync-" + i);
+            perNodeCs.put("sync-" + i, c == null ? null : List.of(c[0], c[1]));
+            if (c != null && csMinMs != null && c[0] == csMinMs && c[1] == csMaxMs) csAcked++;
+        }
+        s.put("node_cs", perNodeCs);
+        s.put("cs_acked", csMinMs == null ? null : csAcked);
         return s;
     }
 
@@ -143,7 +184,8 @@ public final class Observer implements AutoCloseable {
 
     private void sendMode(String node) {
         long lamport = clock.tick();
-        Message m = Message.of(MessageType.MODE, NAME, node, lamport, null).withMode(syncEnabled, epoch);
+        Message m = Message.of(MessageType.MODE, NAME, node, lamport, null).withMode(syncEnabled, epoch)
+                .withCriticalSection(csMinMs, csMaxMs);
         log.message("send", m, lamport, null);
         transport.send(m);
     }
@@ -194,6 +236,7 @@ public final class Observer implements AutoCloseable {
                 if (m.epoch() == null) break;
                 boolean wasSettled = settled();
                 nodeEpoch.put(m.from(), m.epoch());
+                if (m.csMinMs() != null && m.csMaxMs() != null) nodeCs.put(m.from(), new long[]{m.csMinMs(), m.csMaxMs()});
                 if (!wasSettled && settled()) {
                     log.local("MODE_SETTLED", null, lamport, null, Map.of(
                             "sync_enabled", syncEnabled, "epoch", epoch,
@@ -214,6 +257,28 @@ public final class Observer implements AutoCloseable {
     private void ack(MessageType type, Message m) {
         long lamport = clock.tick();
         transport.send(Message.of(type, NAME, m.from(), lamport, m.requestId()));
+    }
+
+    /**
+     * Zera os contadores (violacoes, BEGIN/END, maximo em R, estatisticas por epoca), para medir
+     * um trecho da rodada do zero. Nao mexe no que e estado: quem esta em R agora, o modo, a
+     * epoca e as confirmacoes dos nos. O log guarda COUNTERS_RESET com os valores anteriores.
+     */
+    public synchronized Map<String, Object> resetCounters() {
+        Map<String, Object> before = summary();
+        begins = 0;
+        ends = 0;
+        violations.set(0);
+        transitionViolations = 0;
+        maxActive.set(active.size());
+        epochs.clear();
+        epochs.put(epoch, new EpochStats(syncEnabled));
+        Map<String, Object> ev = new LinkedHashMap<>();
+        ev.put("epoch", epoch);
+        ev.put("active", active.size());
+        ev.put("before", before);
+        log.local("COUNTERS_RESET", null, clock.tick(), null, ev);
+        return summary();
     }
 
     public synchronized Map<String, Object> summary() {

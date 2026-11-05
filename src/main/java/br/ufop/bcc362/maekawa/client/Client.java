@@ -18,10 +18,19 @@ import java.util.concurrent.TimeoutException;
 /**
  * Cliente: conhece um unico no do Cluster Sync. Gera request_id = (client_id, seq),
  * envia ACQUIRE_REQ, espera COMMITTED, pensa de thinkMin a thinkMax ms e repete.
+ * accesses = 0 e o modo continuo (so para demonstracao): pede sem parar ate o processo ser
+ * encerrado ou um pedido estourar o timeout. As rodadas oficiais usam 10..50 e terminam.
  */
 public final class Client implements AutoCloseable {
     public record Config(int clientId, String target, int accesses, long thinkMinMs, long thinkMaxMs,
                          long startDelayMs, long requestTimeoutMs) {
+        public Config {
+            if (accesses < 0) throw new IllegalArgumentException("ACCESSES deve ser >= 0 (0 = continuo): " + accesses);
+        }
+
+        public boolean continuous() {
+            return accesses == 0;
+        }
     }
 
     private final Config cfg;
@@ -30,7 +39,7 @@ public final class Client implements AutoCloseable {
     private final LamportClock clock = new LamportClock();
     private final Map<RequestId, CompletableFuture<Message>> pending = new ConcurrentHashMap<>();
     private final String name;
-    private int committed, timedOut;
+    private volatile int committed, timedOut;
 
     public Client(Config cfg, Transport transport) {
         this(cfg, transport, new EventLog("client-" + cfg.clientId(), null));
@@ -51,16 +60,19 @@ public final class Client implements AutoCloseable {
         return timedOut;
     }
 
-    /** Executa todos os acessos; retorna quando o ultimo COMMITTED chegou (ou estourou o timeout). */
+    /**
+     * Executa todos os acessos; retorna quando o ultimo COMMITTED chegou (ou estourou o timeout).
+     * No modo continuo so retorna por timeout ou interrupcao.
+     */
     public void run() throws InterruptedException {
         transport.start(this::onMessage);
         log.local("START", null, 0, null, Map.of("target", cfg.target(), "accesses", cfg.accesses(),
-                "think_min_ms", cfg.thinkMinMs(), "think_max_ms", cfg.thinkMaxMs()));
+                "continuous", cfg.continuous(), "think_min_ms", cfg.thinkMinMs(), "think_max_ms", cfg.thinkMaxMs()));
         if (cfg.startDelayMs() > 0) Thread.sleep(cfg.startDelayMs());
-        for (int seq = 1; seq <= cfg.accesses(); seq++) {
+        for (int seq = 1; cfg.continuous() || seq <= cfg.accesses(); seq++) {
             RequestId id = new RequestId(cfg.clientId(), seq);
             if (!access(id)) break;
-            if (seq < cfg.accesses() && cfg.thinkMaxMs() > 0) {
+            if ((cfg.continuous() || seq < cfg.accesses()) && cfg.thinkMaxMs() > 0) {
                 long think = cfg.thinkMinMs() >= cfg.thinkMaxMs() ? cfg.thinkMinMs()
                         : ThreadLocalRandom.current().nextLong(cfg.thinkMinMs(), cfg.thinkMaxMs() + 1);
                 Thread.sleep(think);
