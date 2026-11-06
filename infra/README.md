@@ -76,7 +76,9 @@ export KUBECONFIG=$PWD/kubeconfig-oci
 kubectl get nodes
 
 scripts/oci-load-image.sh          # docker build --platform linux/arm64 + import no k3s
-IMAGE=maekawa:dev scripts/oci-apply-base.sh
+IMAGE=maekawa:dev scripts/oci-apply-base.sh   # pods e o front (viz/) na VM
+# noutro terminal: ssh -N -L 8766:127.0.0.1:8765 ubuntu@$OCI_HOST
+# http://127.0.0.1:8766
 
 IMAGE=maekawa:dev scripts/run-experiment.sh sem-protocolo 1
 IMAGE=maekawa:dev scripts/run-experiment.sh deadlock 1

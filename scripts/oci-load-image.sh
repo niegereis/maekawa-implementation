@@ -25,5 +25,5 @@ docker save "$IMAGE" | gzip | "${SSH[@]}" "$USER@$HOST" 'gunzip | sudo k3s ctr i
 
 echo "imagem $IMAGE no nó. Com o túnel aberto:"
 echo "  export KUBECONFIG=\$PWD/kubeconfig-oci"
-echo "  IMAGE=$IMAGE scripts/oci-apply-base.sh"
+echo "  IMAGE=$IMAGE scripts/oci-apply-base.sh    # pods e o front na VM"
 echo "  IMAGE=$IMAGE scripts/run-experiment.sh normal 1"

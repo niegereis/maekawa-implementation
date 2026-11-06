@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Aplica k8s/base no cluster atual (k3s via túnel), sem o Job de clientes.
+# Aplica k8s/base no cluster atual (k3s via túnel), sem o Job de clientes,
+# e publica o front (viz/) na VM.
 # uso: IMAGE=maekawa:dev scripts/oci-apply-base.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,3 +18,5 @@ print("\n---\n".join(d for d in docs if not re.search(r"^kind: Job$", d, flags=r
 kubectl -n maekawa rollout status statefulset/sync --timeout=180s
 kubectl -n maekawa rollout status deployment/observer --timeout=120s
 kubectl -n maekawa get pods -o wide
+
+scripts/oci-viz.sh

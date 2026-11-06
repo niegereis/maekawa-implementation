@@ -119,7 +119,9 @@ scripts/oci-kubeconfig.sh
 # noutro terminal: scripts/oci-tunnel.sh
 export KUBECONFIG=$PWD/kubeconfig-oci
 scripts/oci-load-image.sh
-IMAGE=maekawa:dev scripts/oci-apply-base.sh
+IMAGE=maekawa:dev scripts/oci-apply-base.sh          # pods e o front na VM
+# noutro terminal: ssh -N -L 8766:127.0.0.1:8765 ubuntu@$OCI_HOST
+# http://127.0.0.1:8766
 IMAGE=maekawa:dev scripts/run-suite.sh
 scripts/oci-stop.sh
 ```
