@@ -75,10 +75,15 @@ public final class Node implements AutoCloseable {
     public record Mode(boolean syncEnabled, long epoch) {
     }
 
+    /** No com log padrao (stdout em JSON Lines). */
     public Node(NodeConfig cfg, Quorum quorum, Transport transport) {
         this(cfg, quorum, transport, new EventLog(NodeConfig.nodeName(cfg.pid()), cfg.pid()));
     }
 
+    /**
+     * Monta os dois papeis: Requester pede votos ao quorum S_i deste no; Voter concede o voto
+     * deste no a um pedido por vez. Os dois enviam mensagens pelo sendProtocol.
+     */
     public Node(NodeConfig cfg, Quorum quorum, Transport transport, EventLog log) {
         this.cfg = cfg;
         this.name = NodeConfig.nodeName(cfg.pid());
@@ -93,6 +98,10 @@ public final class Node implements AutoCloseable {
         this.rnd = new Random(cfg.seed());
     }
 
+    /**
+     * Liga o transporte, registra START no log (variante, quorum, secao critica, semente) e
+     * pergunta ao observador o modo atual (MODE_QUERY), para adotar o valor do cluster.
+     */
     public void start() {
         transport.start(this::onMessage);
         log.local("START", null, clock.now(), null, Map.of(
@@ -117,30 +126,42 @@ public final class Node implements AutoCloseable {
         return mode.get();
     }
 
+    /** Id deste processo (0..N-1). */
     public int pid() {
         return cfg.pid();
     }
 
+    /** Papel de pedinte deste no (usado pelos testes para inspecionar o estado). */
     public Requester requester() {
         return requester;
     }
 
+    /** Papel de votante deste no (usado pelos testes para inspecionar o estado). */
     public Voter voter() {
         return voter;
     }
 
+    /** Relogio logico de Lamport deste no. */
     public LamportClock clock() {
         return clock;
     }
 
     // ------------------------------------------------------------------ API acquire / enter / release
 
-    /** Bloqueia ate reunir os K votos. Com o Maekawa desligado retorna na hora. */
+    /**
+     * Fixa a prioridade (Lamport, pid), envia REQUEST ao quorum e bloqueia ate reunir os K votos
+     * (um LOCKED de cada votante). Com o Maekawa desligado retorna na hora.
+     */
     public void acquire(RequestId id) throws InterruptedException {
         tryAcquire(id, Long.MAX_VALUE);
     }
 
-    /** @return false se o tempo acabou antes do quorum (o pedido continua pendente). */
+    /**
+     * Mesmo que acquire, com limite de espera. Guarda o modo em que o pedido foi admitido,
+     * para o release usar o mesmo modo mesmo que o observador troque no meio.
+     *
+     * @return false se o tempo acabou antes do quorum (o pedido continua pendente).
+     */
     public boolean tryAcquire(RequestId id, long timeoutMs) throws InterruptedException {
         Mode m = mode.get();
         admitted.put(id, m); // o release usa este valor, nao o modo do momento
@@ -189,6 +210,10 @@ public final class Node implements AutoCloseable {
         registerWithObserver(MessageType.END, MessageType.END_ACK, id, epoch);
     }
 
+    /**
+     * Envia BEGIN ou END ao observador e espera o ACK correspondente. Se o observador nao
+     * responder em OBSERVER_ACK_TIMEOUT_MS, registra no log e segue: ele e so instrumentacao.
+     */
     private void registerWithObserver(MessageType event, MessageType ack, RequestId id, long epoch) throws InterruptedException {
         CompletableFuture<Void> fut = new CompletableFuture<>();
         pendingAcks.put(ackKey(ack, id), fut);
@@ -205,11 +230,15 @@ public final class Node implements AutoCloseable {
         }
     }
 
+    /** Chave do ACK esperado: tipo + request_id, para casar BEGIN_ACK/END_ACK com o pedido certo. */
     private static String ackKey(MessageType ack, RequestId id) {
         return ack.name() + ":" + id.clientId() + ":" + id.seq();
     }
 
-    /** Devolve os votos. Se o pedido foi admitido com o Maekawa desligado, nao faz nada. */
+    /**
+     * Devolve os votos: RELEASE a cada votante do quorum. Usa o modo em que o pedido foi
+     * admitido; se foi admitido com o Maekawa desligado, nao ha votos e nao faz nada.
+     */
     public void release(RequestId id) {
         Mode m = admitted.remove(id);
         if (m == null) m = mode.get();
@@ -228,6 +257,12 @@ public final class Node implements AutoCloseable {
 
     // ------------------------------------------------------------------ mensagens
 
+    /**
+     * Despacha cada mensagem recebida:
+     * ACQUIRE_REQ (cliente pede acesso a R, ainda sem voto nenhum) vira um serveClient em thread propria;
+     * REQUEST/LOCKED/FAILED/INQUIRE/RELINQUISH/RELEASE vao para o protocolo;
+     * BEGIN_ACK/END_ACK liberam quem espera o observador; MODE aplica o que o observador anunciou.
+     */
     private void onMessage(Message m) {
         long lamport = clock.merge(m.lamport());
         switch (m.type()) {
@@ -245,6 +280,12 @@ public final class Node implements AutoCloseable {
         }
     }
 
+    /**
+     * Mensagens do Maekawa, sob o lock. Para o Voter: REQUEST (pedido de voto), RELINQUISH
+     * (detentor devolveu o voto sem entrar) e RELEASE (detentor saiu de R). Para o Requester:
+     * LOCKED (um voto concedido), FAILED (votante priorizou outro pedido) e INQUIRE (votante quer
+     * o voto de volta). Quando o LOCKED fecha o quorum, acorda o acquire.
+     */
     private void onProtocol(Message m, long lamport) {
         int from = m.processId() != null ? m.processId() : NodeConfig.pidOf(m.from());
         lock.lock();
@@ -267,6 +308,9 @@ public final class Node implements AutoCloseable {
     }
 
     /**
+     * Aplica o MODE do observador: Maekawa ligado/desligado (epoca), duracao da secao critica e
+     * pausa dos clientes; responde MODE_ACK com o que ficou valendo.
+     *
      * O observador e o unico que anuncia modo, e as mensagens dele para este no chegam em ordem
      * (FIFO por destino); por isso o no adota sempre o ultimo MODE recebido, sem comparar epocas.
      * Isso tambem cobre o observador reiniciado, que volta para a epoca 0.
@@ -316,7 +360,10 @@ public final class Node implements AutoCloseable {
         transport.send(ack);
     }
 
-    /** Fluxo completo de um pedido do cliente: acquire, enter, release, COMMITTED. */
+    /**
+     * Fluxo completo de um ACQUIRE_REQ do cliente: acquire (junta os votos), enter (BEGIN, sleep,
+     * END), release (devolve os votos) e COMMITTED ao cliente. Pedidos do mesmo cliente nunca se sobrepoem.
+     */
     private void serveClient(Message req) {
         clientSerial.lock(); // um cliente por no, mas pedidos do mesmo cliente nunca se sobrepoem
         try {
@@ -333,7 +380,10 @@ public final class Node implements AutoCloseable {
         }
     }
 
-    /** Chamado por Requester e Voter sob o lock. REQUEST leva a prioridade fixada no begin. */
+    /**
+     * Envia uma mensagem de protocolo a outro no (implementa o Outbox de Requester e Voter).
+     * Chamado sob o lock. REQUEST leva a prioridade fixada no begin; as demais avancam o relogio.
+     */
     private void sendProtocol(MessageType type, int toPid, RequestId id) {
         long lamport;
         Message m;
@@ -350,7 +400,10 @@ public final class Node implements AutoCloseable {
         transport.send(m);
     }
 
-    /** COMMITTED leva a pausa anunciada pelo observador: o cliente usa a partir do proximo pedido. */
+    /**
+     * Responde COMMITTED ao cliente (acesso concluido). Leva a pausa anunciada pelo observador:
+     * o cliente usa a partir do proximo pedido.
+     */
     private void sendCommitted(String client, RequestId id) {
         long lamport = clock.tick();
         long[] th = think.get();
@@ -360,6 +413,7 @@ public final class Node implements AutoCloseable {
         transport.send(m);
     }
 
+    /** Envia mensagem de instrumentacao (BEGIN, END, MODE_QUERY) com a epoca do pedido, quando houver. */
     private void sendInstrumentation(MessageType type, String to, RequestId id, Long epoch) {
         long lamport = clock.tick();
         Message m = Message.of(type, name, to, lamport, id).withProcessId(cfg.pid());
@@ -368,6 +422,7 @@ public final class Node implements AutoCloseable {
         transport.send(m);
     }
 
+    /** Encerra as threads de atendimento e o transporte. */
     @Override
     public void close() {
         workers.shutdownNow();

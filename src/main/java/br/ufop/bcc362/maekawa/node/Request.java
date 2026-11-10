@@ -5,6 +5,7 @@ import br.ufop.bcc362.maekawa.common.RequestId;
 
 /** Um pedido visto por um votante: quem pediu, qual request_id e com que prioridade. */
 public record Request(int ownerPid, RequestId id, Priority priority) implements Comparable<Request> {
+    /** Ordem da fila do votante: menor (Lamport, id do processo) primeiro; empate final pelo request_id. */
     @Override
     public int compareTo(Request o) {
         int c = priority.compareTo(o.priority);

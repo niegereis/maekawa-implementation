@@ -7,6 +7,7 @@ public enum Variant {
     /** Acrescenta FAILED, INQUIRE, RELINQUISH com prioridade por (Lamport, id). Maekawa 1985. */
     RESOLUTION;
 
+    /** Le a variavel VARIANT ("basic"/"basica" ou "resolution"/"resolucao"); vazio = RESOLUTION. */
     public static Variant parse(String s) {
         if (s == null || s.isBlank()) return RESOLUTION;
         return switch (s.trim().toLowerCase()) {

@@ -26,16 +26,19 @@ public final class Requester {
      *  decisão é só "já tem quórum?" (estado CRITICAL), então o flag não muda o fluxo. */
     private boolean failed;
 
+    /** @param voters S_i: a quem este no pede votos (inclui o proprio pid) */
     public Requester(int pid, Set<Integer> voters, Outbox out) {
         this.pid = pid;
         this.voters = Set.copyOf(voters);
         this.out = out;
     }
 
+    /** IDLE (sem pedido), COLLECTING (juntando votos), YIELDING (cedeu um voto) ou CRITICAL (tem os K). */
     public State state() {
         return state;
     }
 
+    /** Pedido em andamento, se houver. */
     public Optional<Request> current() {
         return Optional.ofNullable(current);
     }
@@ -45,6 +48,7 @@ public final class Requester {
         return Set.copyOf(votes);
     }
 
+    /** true quando ja tem o LOCKED de todos os votantes de S_i e pode entrar em R. */
     public boolean hasQuorum() {
         return state == State.CRITICAL;
     }
@@ -59,7 +63,11 @@ public final class Requester {
         for (int v : voters) out.send(MessageType.REQUEST, v, id);
     }
 
-    /** @return true se este LOCKED completou o quorum. */
+    /**
+     * Um votante concedeu o voto (LOCKED): soma ao conjunto de votos do pedido atual.
+     *
+     * @return true se este LOCKED completou o quorum.
+     */
     public boolean onLocked(int from, RequestId id) {
         if (!isCurrent(id) || state == State.CRITICAL) return false;
         votes.add(from);
@@ -70,14 +78,16 @@ public final class Requester {
         return false;
     }
 
+    /** O votante priorizou outro pedido (FAILED): o voto dele nao vem agora. So anota. */
     public void onFailed(int from, RequestId id) {
         if (!isCurrent(id)) return;
         failed = true;
     }
 
     /**
-     * Um votante pergunta se cedemos o voto dele. Cede quem ainda nao esta em CRITICAL
-     * (quorum incompleto). Quem ja tem os K votos nao cede; o voto volta so no RELEASE.
+     * Um votante pergunta se cedemos o voto dele (INQUIRE). Cede quem ainda nao esta em CRITICAL
+     * (quorum incompleto), com RELINQUISH: e isso que quebra a espera circular (deadlock).
+     * Quem ja tem os K votos nao cede; o voto volta so no RELEASE.
      * @return true se cedeu
      */
     public boolean onInquire(int from, RequestId id) {
@@ -106,10 +116,12 @@ public final class Requester {
         state = State.IDLE;
     }
 
+    /** Se chegou algum FAILED para o pedido atual (informativo; usado nos testes). */
     public boolean failedSeen() {
         return failed;
     }
 
+    /** A mensagem e do pedido em andamento? Descarta respostas atrasadas de pedidos antigos. */
     private boolean isCurrent(RequestId id) {
         return current != null && current.id().equals(id);
     }
