@@ -997,6 +997,8 @@
     const thinkNodeMax = document.getElementById("think-node-max");
     let unequalDirty = false; // mexeram na exceção e ainda não aplicaram
     let serverUnequal = false; // o observador tem exceção ativa
+    let unequalWarning = ""; // o servidor aceitou o Aplicar, mas não confirmou a exceção
+    let unequalSettleUntil = 0; // logo após aplicar, ignora um /api/mode que já estava a caminho
 
     function showUnequal(on) {
       thinkUnequalBox.style.display = on ? "" : "none";
@@ -1029,7 +1031,7 @@
       ensureNodeOptions(mode.nodes || 7);
       serverUnequal = !!mode.think_unequal;
       const editing = [thinkNode, thinkNodeMin, thinkNodeMax].includes(document.activeElement);
-      if (!unequalDirty && !editing) {
+      if (!unequalDirty && !editing && Date.now() >= unequalSettleUntil) {
         thinkUnequal.checked = serverUnequal;
         showUnequal(serverUnequal);
         if (serverUnequal) {
@@ -1046,7 +1048,7 @@
         ? `pedido ${mode.think_min_ms}–${mode.think_max_ms} ms`
         : (clusterThink ? `padrão do ConfigMap: ${clusterThink[0]}–${clusterThink[1]} ms (THINK_MIN_MS/THINK_MAX_MS)` : "padrão do ConfigMap (THINK_MIN_MS/THINK_MAX_MS)");
       const acked = mode.think_acked != null ? ` · ${mode.think_acked}/${targets} nós repassam aos clientes` : "";
-      thinkStatus.textContent = base + exception + acked;
+      thinkStatus.textContent = base + exception + acked + (unequalWarning ? ` · ⚠ ${unequalWarning}` : "");
     }
 
     /**
@@ -1080,7 +1082,15 @@
         else {
           thinkDirty = false;
           thinkCurrent = [min, max];
-          if (unequal !== undefined) unequalDirty = false;
+          if (unequal && body.think_unequal !== true) {
+            // aceitou a pausa geral e ignorou a exceção: viz/server.py ou observador de antes da
+            // carga desigual. Mantém a caixa marcada e avisa, em vez de desmarcar em silêncio.
+            unequalWarning = "a carga desigual não foi aplicada: reinicie o viz (viz/server.py) e, no k8s, recrie os pods com a imagem nova do observador";
+          } else if (unequal !== undefined) {
+            unequalDirty = false;
+            unequalWarning = "";
+            unequalSettleUntil = Date.now() + 1500;
+          }
         }
       } catch (err) {
         thinkStatus.textContent = String(err);
@@ -1110,6 +1120,7 @@
         sendThink(a, b, false);
       } else {
         unequalDirty = false;
+        unequalWarning = "";
       }
     });
     document.getElementById("think-apply").addEventListener("click", () =>
