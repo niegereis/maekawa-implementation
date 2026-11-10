@@ -13,6 +13,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 
 /**
@@ -21,7 +22,10 @@ import java.util.concurrent.Executors;
  * GET  /mode     modo atual, epoca e quantos nos confirmaram
  * POST /mode     {"sync_enabled": false} (ou ?sync_enabled=false) liga/desliga o Maekawa nos N nos;
  *                {"cs_min_ms": 2000, "cs_max_ms": 4000} troca a duracao da secao critica simulada;
- *                {"think_min_ms": 500, "think_max_ms": 1500} troca a pausa entre pedidos dos clientes.
+ *                {"think_min_ms": 500, "think_max_ms": 1500} troca a pausa entre pedidos dos clientes;
+ *                carga desigual: junto com a pausa geral, {"think_unequal": true, "think_node": "sync-2",
+ *                "think_node_min_ms": 0, "think_node_max_ms": 200} da a um no (e ao cliente dele) pausa
+ *                propria; {"think_unequal": false} remove a excecao. Sem think_unequal, a excecao fica.
  *                Os dois podem ir juntos; pelo menos um e obrigatorio.
  * GET  /stats    contadores do observador (total e por epoca) mais o modo
  * POST /reset    zera os contadores (violacoes, BEGIN/END, maximo em R, por epoca); devolve /stats
@@ -92,10 +96,20 @@ public final class ObserverHttp implements AutoCloseable {
                         throw new IllegalArgumentException("pausa invalida: precisa 0 <= think_min_ms <= think_max_ms <= "
                                 + Observer.CS_LIMIT_MS);
                     }
+                    if (c.thinkException != null && c.thinkException.isPresent()) {
+                        Observer.ThinkException x = c.thinkException.get();
+                        String node = observer.nodeName(x.node());
+                        if (node == null) throw new IllegalArgumentException("think_node invalido: " + x.node());
+                        if (x.minMs() < 0 || x.maxMs() < x.minMs() || x.maxMs() > Observer.CS_LIMIT_MS) {
+                            throw new IllegalArgumentException("pausa do no invalida: precisa 0 <= think_node_min_ms <= think_node_max_ms <= "
+                                    + Observer.CS_LIMIT_MS);
+                        }
+                        c = c.withException(Optional.of(new Observer.ThinkException(node, x.minMs(), x.maxMs())));
+                    }
                     Map<String, Object> status = null;
                     if (c.sync != null) status = observer.setSyncEnabled(c.sync);
                     if (c.csMin != null) status = observer.setCriticalSection(c.csMin, c.csMax);
-                    if (c.thinkMin != null) status = observer.setThink(c.thinkMin, c.thinkMax);
+                    if (c.thinkMin != null) status = observer.setThink(c.thinkMin, c.thinkMax, c.thinkException);
                     send(ex, 200, status);
                 } catch (IllegalArgumentException e) {
                     send(ex, 400, Map.of("error", e.getMessage()));
@@ -120,7 +134,12 @@ public final class ObserverHttp implements AutoCloseable {
         return body;
     }
 
-    private record Change(Boolean sync, Long csMin, Long csMax, Long thinkMin, Long thinkMax) {
+    /** thinkException: null = nao mexe na carga desigual; empty = desliga; valor = no com pausa propria. */
+    private record Change(Boolean sync, Long csMin, Long csMax, Long thinkMin, Long thinkMax,
+                          Optional<Observer.ThinkException> thinkException) {
+        Change withException(Optional<Observer.ThinkException> x) {
+            return new Change(sync, csMin, csMax, thinkMin, thinkMax, x);
+        }
     }
 
     /**
@@ -152,14 +171,31 @@ public final class ObserverHttp implements AutoCloseable {
             if (body != null && !body.isObject()) throw new IllegalArgumentException("corpo deve ser um objeto JSON");
         }
         String syncRaw = field(q, body, "sync_enabled", "sync");
-        Boolean sync = syncRaw == null ? null : parseBool(syncRaw);
+        Boolean sync = syncRaw == null ? null : parseBool(syncRaw, "sync_enabled");
         String min = field(q, body, "cs_min_ms"), max = field(q, body, "cs_max_ms");
         if ((min == null) != (max == null)) throw new IllegalArgumentException("informe cs_min_ms e cs_max_ms juntos");
         Long csMin = min == null ? null : parseMs(min), csMax = max == null ? null : parseMs(max);
         String tmin = field(q, body, "think_min_ms"), tmax = field(q, body, "think_max_ms");
         if ((tmin == null) != (tmax == null)) throw new IllegalArgumentException("informe think_min_ms e think_max_ms juntos");
         Long thinkMin = tmin == null ? null : parseMs(tmin), thinkMax = tmax == null ? null : parseMs(tmax);
-        return new Change(sync, csMin, csMax, thinkMin, thinkMax);
+        Optional<Observer.ThinkException> exception = null;
+        String unequalRaw = field(q, body, "think_unequal");
+        if (unequalRaw != null) {
+            // a excecao e relativa a pausa geral: as duas vao juntas, para desligar nunca deixar
+            // o no preso na pausa antiga quando ninguem trocou a geral ainda
+            if (thinkMin == null) throw new IllegalArgumentException("think_unequal vai junto com think_min_ms e think_max_ms");
+            if (parseBool(unequalRaw, "think_unequal")) {
+                String node = field(q, body, "think_node");
+                String nmin = field(q, body, "think_node_min_ms"), nmax = field(q, body, "think_node_max_ms");
+                if (node == null || nmin == null || nmax == null) {
+                    throw new IllegalArgumentException("think_unequal=true precisa de think_node, think_node_min_ms e think_node_max_ms");
+                }
+                exception = Optional.of(new Observer.ThinkException(node, parseMs(nmin), parseMs(nmax)));
+            } else {
+                exception = Optional.empty();
+            }
+        }
+        return new Change(sync, csMin, csMax, thinkMin, thinkMax, exception);
     }
 
     private static String field(Map<String, String> q, JsonNode body, String... names) {
@@ -178,11 +214,11 @@ public final class ObserverHttp implements AutoCloseable {
         }
     }
 
-    private static boolean parseBool(String s) {
+    private static boolean parseBool(String s, String name) {
         return switch (s.trim().toLowerCase()) {
             case "true", "1", "on" -> true;
             case "false", "0", "off" -> false;
-            default -> throw new IllegalArgumentException("sync_enabled invalido: " + s);
+            default -> throw new IllegalArgumentException(name + " invalido: " + s);
         };
     }
 

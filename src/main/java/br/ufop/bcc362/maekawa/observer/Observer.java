@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -53,6 +54,12 @@ public final class Observer implements AutoCloseable {
     private Long csMinMs, csMaxMs;
     /** pausa entre pedidos anunciada; null ate alguem trocar pela API */
     private Long thinkMinMs, thinkMaxMs;
+    /**
+     * Carga desigual: um no (e portanto o cliente que fala com ele) com pausa propria.
+     * null = sem excecao, todos usam a pausa geral.
+     */
+    private String thinkNode;
+    private long thinkNodeMinMs, thinkNodeMaxMs;
     /** no -> [min, max] da pausa confirmada no ultimo MODE_ACK */
     private final Map<String, long[]> nodeThink = new TreeMap<>();
     /** no -> [min, max] confirmado no ultimo MODE_ACK */
@@ -147,8 +154,33 @@ public final class Observer implements AutoCloseable {
      * deles aos clientes no proximo COMMITTED. Nao abre epoca nova.
      */
     public synchronized Map<String, Object> setThink(long min, long max) {
-        if (min < 0 || max < min || max > CS_LIMIT_MS) {
-            throw new IllegalArgumentException("pausa invalida: precisa 0 <= min <= max <= " + CS_LIMIT_MS);
+        return setThink(min, max, null);
+    }
+
+    /**
+     * Pausa de um no especifico, para a carga desigual. O cliente i fala so com sync-i, entao
+     * trocar a pausa do no troca a frequencia de pedidos daquele cliente.
+     *
+     * @param node  "sync-i"
+     */
+    public record ThinkException(String node, long minMs, long maxMs) {
+    }
+
+    /**
+     * Troca a pausa geral e, junto, a excecao da carga desigual.
+     *
+     * @param exception {@code null} mantem a excecao atual; {@link Optional#empty()} remove;
+     *                  um valor coloca (ou troca) o no com pausa propria
+     */
+    public synchronized Map<String, Object> setThink(long min, long max, Optional<ThinkException> exception) {
+        checkThink(min, max);
+        if (exception != null && exception.isPresent()) {
+            ThinkException x = exception.get();
+            checkThink(x.minMs(), x.maxMs());
+            if (nodeIndex(x.node()) < 0) {
+                throw new IllegalArgumentException("no invalido para a carga desigual: " + x.node()
+                        + " (use sync-0 .. sync-" + (nodeCount - 1) + ")");
+            }
         }
         Map<String, Object> ev = new LinkedHashMap<>();
         ev.put("think_min_ms", min);
@@ -157,9 +189,56 @@ public final class Observer implements AutoCloseable {
         ev.put("previous_think_max_ms", thinkMaxMs);
         thinkMinMs = min;
         thinkMaxMs = max;
+        if (exception != null) {
+            ev.put("previous_think_node", thinkNode);
+            if (exception.isPresent()) {
+                ThinkException x = exception.get();
+                thinkNode = nodeName(x.node());
+                thinkNodeMinMs = x.minMs();
+                thinkNodeMaxMs = x.maxMs();
+            } else {
+                thinkNode = null;
+            }
+        }
+        ev.put("think_unequal", thinkNode != null);
+        if (thinkNode != null) {
+            ev.put("think_node", thinkNode);
+            ev.put("think_node_min_ms", thinkNodeMinMs);
+            ev.put("think_node_max_ms", thinkNodeMaxMs);
+        }
         log.local("THINK_CHANGE", null, clock.tick(), null, ev);
         for (int i = 0; i < nodeCount; i++) sendMode("sync-" + i);
         return modeStatus();
+    }
+
+    private static void checkThink(long min, long max) {
+        if (min < 0 || max < min || max > CS_LIMIT_MS) {
+            throw new IllegalArgumentException("pausa invalida: precisa 0 <= min <= max <= " + CS_LIMIT_MS);
+        }
+    }
+
+    /** "sync-3" ou "3" -> 3; -1 se nao for um no deste cluster. */
+    private int nodeIndex(String node) {
+        if (node == null) return -1;
+        String s = node.startsWith("sync-") ? node.substring(5) : node;
+        try {
+            int i = Integer.parseInt(s.trim());
+            return i >= 0 && i < nodeCount ? i : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /** Normaliza "3" ou "sync-3" para "sync-3"; null se invalido. */
+    public String nodeName(String node) {
+        int i = nodeIndex(node);
+        return i < 0 ? null : "sync-" + i;
+    }
+
+    /** Pausa que este no deve repassar ao seu cliente: a excecao, se for ele, senao a geral. */
+    private long[] thinkFor(String node) {
+        if (node.equals(thinkNode)) return new long[]{thinkNodeMinMs, thinkNodeMaxMs};
+        return thinkMinMs == null ? null : new long[]{thinkMinMs, thinkMaxMs};
     }
 
     public synchronized boolean syncEnabled() {
@@ -201,12 +280,25 @@ public final class Observer implements AutoCloseable {
         s.put("cs_acked", csMinMs == null ? null : csAcked);
         s.put("think_min_ms", thinkMinMs);
         s.put("think_max_ms", thinkMaxMs);
-        int thinkAcked = 0;
+        s.put("think_unequal", thinkNode != null);
+        s.put("think_node", thinkNode);
+        s.put("think_node_min_ms", thinkNode == null ? null : thinkNodeMinMs);
+        s.put("think_node_max_ms", thinkNode == null ? null : thinkNodeMaxMs);
+        // confirmado = o no repassa exatamente a pausa que deveria (a geral ou a da excecao)
+        int thinkAcked = 0, thinkTargets = 0;
+        Map<String, Object> perNodeThink = new LinkedHashMap<>();
         for (int i = 0; i < nodeCount; i++) {
-            long[] t = nodeThink.get("sync-" + i);
-            if (t != null && thinkMinMs != null && t[0] == thinkMinMs && t[1] == thinkMaxMs) thinkAcked++;
+            String node = "sync-" + i;
+            long[] t = nodeThink.get(node);
+            long[] want = thinkFor(node);
+            perNodeThink.put(node, t == null ? null : List.of(t[0], t[1]));
+            if (want == null) continue;
+            thinkTargets++;
+            if (t != null && t[0] == want[0] && t[1] == want[1]) thinkAcked++;
         }
-        s.put("think_acked", thinkMinMs == null ? null : thinkAcked);
+        s.put("node_think", perNodeThink);
+        s.put("think_acked", thinkTargets == 0 ? null : thinkAcked);
+        s.put("think_targets", thinkTargets);
         return s;
     }
 
@@ -216,9 +308,10 @@ public final class Observer implements AutoCloseable {
 
     private void sendMode(String node) {
         long lamport = clock.tick();
+        long[] th = thinkFor(node);
         Message m = Message.of(MessageType.MODE, NAME, node, lamport, null).withMode(syncEnabled, epoch)
                 .withCriticalSection(csMinMs, csMaxMs)
-                .withThink(thinkMinMs, thinkMaxMs);
+                .withThink(th == null ? null : th[0], th == null ? null : th[1]);
         log.message("send", m, lamport, null);
         transport.send(m);
     }

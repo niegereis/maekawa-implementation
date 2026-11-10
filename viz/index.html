@@ -142,6 +142,9 @@
     .cs { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
     .cs input[type="number"] { width: 78px; background: #11151c; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font: inherit; }
     .cs .row { flex-wrap: wrap; }
+    .cs select { background: #11151c; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; font: inherit; }
+    .cs .unequal-toggle { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px; cursor: pointer; align-self: flex-start; white-space: nowrap; }
+    .cs .unequal-toggle input { margin: 0; }
     .stat.wide { grid-column: 1 / -1; }
     .stat.wide b { font-size: 15px; }
     /* tela estreita: uma coluna, com a barra lateral (e o painel "Ao vivo") antes do desenho */
@@ -232,6 +235,15 @@
             <button type="button" class="think-mult" data-mult="0.5" disabled title="metade da pausa: o dobro de pedidos">Mais pedidos ×2</button>
             <button type="button" class="think-mult" data-mult="2" disabled title="o dobro da pausa: metade dos pedidos">Menos pedidos ÷2</button>
             <button type="button" id="think-zero" disabled title="pausa 0: cada cliente pede assim que recebe o COMMITTED">Sem pausa</button>
+          </div>
+          <label class="unequal-toggle" title="Carga desigual: um nó (e o cliente que fala com ele) usa uma pausa diferente da geral">
+            <input id="think-unequal" type="checkbox" disabled> Carga desigual
+          </label>
+          <div id="think-unequal-box" class="row" style="display: none" aria-label="Exceção da carga desigual">
+            <select id="think-node" aria-label="nó com frequência diferente"></select>
+            <input id="think-node-min" type="number" min="0" max="60000" step="100" aria-label="pausa mínima do nó em ms"> –
+            <input id="think-node-max" type="number" min="0" max="60000" step="100" aria-label="pausa máxima do nó em ms"> ms
+            <span class="note">(vale com o Aplicar acima)</span>
           </div>
           <div id="think-status" class="note"></div>
           <div id="rate-status" class="note"></div>
@@ -674,7 +686,8 @@
       if (e.event === "MODE_CHANGE") return `MODO → Maekawa ${e.sync_enabled ? "ligado" : "desligado"} · época ${e.epoch}`;
       if (e.event === "MODE_SETTLED") return `MODO confirmado pelos 7 nós · época ${e.epoch} (${e.after_ms} ms)`;
       if (e.event === "COUNTERS_RESET") return `CONTADORES zerados (antes: ${e.before ? e.before.violations : "?"} violações)`;
-      if (e.event === "THINK_CHANGE") return `PAUSA ENTRE PEDIDOS → ${e.think_min_ms}–${e.think_max_ms} ms`;
+      if (e.event === "THINK_CHANGE") return `PAUSA ENTRE PEDIDOS → ${e.think_min_ms}–${e.think_max_ms} ms`
+        + (e.think_unequal ? ` · desigual: ${e.think_node} em ${e.think_node_min_ms}–${e.think_node_max_ms} ms` : "");
       if (e.event === "CS_CHANGE") return `SEÇÃO CRÍTICA → ${e.cs_min_ms}–${e.cs_max_ms} ms`;
       return `${e.event} ${e.process || ""} → ${e.peer || ""}${id}`;
     }
@@ -975,10 +988,37 @@
     let thinkCurrent = null; // [min, max] em uso: o anunciado ou o do ConfigMap
     let clusterThink = null; // THINK_MIN_MS/THINK_MAX_MS do ConfigMap (via /api/info)
 
+    // Carga desigual: um nó (e o cliente i, que só fala com sync-i) com pausa própria.
+    // A opção só aparece com a caixa "Carga desigual" marcada.
+    const thinkUnequal = document.getElementById("think-unequal");
+    const thinkUnequalBox = document.getElementById("think-unequal-box");
+    const thinkNode = document.getElementById("think-node");
+    const thinkNodeMin = document.getElementById("think-node-min");
+    const thinkNodeMax = document.getElementById("think-node-max");
+    let unequalDirty = false; // mexeram na exceção e ainda não aplicaram
+    let serverUnequal = false; // o observador tem exceção ativa
+
+    function showUnequal(on) {
+      thinkUnequalBox.style.display = on ? "" : "none";
+    }
+
+    function ensureNodeOptions(n) {
+      if (thinkNode.options.length === n) return;
+      const keep = thinkNode.value;
+      thinkNode.replaceChildren(...Array.from({ length: n }, (_, i) => {
+        const o = document.createElement("option");
+        o.value = `sync-${i}`;
+        o.textContent = `sync-${i} (client-${i})`;
+        return o;
+      }));
+      if (keep && Number(keep.slice(5)) < n) thinkNode.value = keep;
+    }
+
     function renderThink(mode) {
       const enabled = !!mode;
       ["think-apply", "think-zero"].forEach((id) => { document.getElementById(id).disabled = !enabled; });
       document.querySelectorAll(".think-mult").forEach((b) => { b.disabled = !enabled; });
+      thinkUnequal.disabled = !enabled;
       if (!mode) { thinkStatus.textContent = ""; return; }
       if (mode.think_min_ms != null) thinkCurrent = [mode.think_min_ms, mode.think_max_ms];
       else if (!thinkCurrent && clusterThink) thinkCurrent = clusterThink;
@@ -986,26 +1026,62 @@
         thinkMin.value = String(thinkCurrent[0]);
         thinkMax.value = String(thinkCurrent[1]);
       }
-      thinkStatus.textContent = mode.think_min_ms != null
-        ? `pedido ${mode.think_min_ms}–${mode.think_max_ms} ms · ${mode.think_acked}/${mode.nodes} nós repassam aos clientes`
+      ensureNodeOptions(mode.nodes || 7);
+      serverUnequal = !!mode.think_unequal;
+      const editing = [thinkNode, thinkNodeMin, thinkNodeMax].includes(document.activeElement);
+      if (!unequalDirty && !editing) {
+        thinkUnequal.checked = serverUnequal;
+        showUnequal(serverUnequal);
+        if (serverUnequal) {
+          thinkNode.value = mode.think_node;
+          thinkNodeMin.value = String(mode.think_node_min_ms);
+          thinkNodeMax.value = String(mode.think_node_max_ms);
+        }
+      }
+      const targets = mode.think_targets != null ? mode.think_targets : mode.nodes;
+      const exception = serverUnequal
+        ? ` · desigual: ${mode.think_node} (client-${mode.think_node.slice(5)}) em ${mode.think_node_min_ms}–${mode.think_node_max_ms} ms`
+        : "";
+      const base = mode.think_min_ms != null
+        ? `pedido ${mode.think_min_ms}–${mode.think_max_ms} ms`
         : (clusterThink ? `padrão do ConfigMap: ${clusterThink[0]}–${clusterThink[1]} ms (THINK_MIN_MS/THINK_MAX_MS)` : "padrão do ConfigMap (THINK_MIN_MS/THINK_MAX_MS)");
+      const acked = mode.think_acked != null ? ` · ${mode.think_acked}/${targets} nós repassam aos clientes` : "";
+      thinkStatus.textContent = base + exception + acked;
     }
 
-    async function sendThink(min, max) {
+    /**
+     * Manda a pausa geral. unequal: undefined = não mexe na exceção; false = remove;
+     * {node, min, max} = coloca/troca o nó com pausa própria.
+     */
+    async function sendThink(min, max, unequal) {
       min = Math.round(min); max = Math.round(max);
       if (!(min >= 0 && max >= min && max <= 60000)) {
         thinkStatus.textContent = "precisa 0 ≤ mínimo ≤ máximo ≤ 60000 ms";
         return;
       }
+      const payload = { think_min_ms: min, think_max_ms: max };
+      if (unequal === false) payload.think_unequal = false;
+      else if (unequal) {
+        const lo = Math.round(unequal.min), hi = Math.round(unequal.max);
+        if (!(lo >= 0 && hi >= lo && hi <= 60000)) {
+          thinkStatus.textContent = "pausa do nó: precisa 0 ≤ mínimo ≤ máximo ≤ 60000 ms";
+          return;
+        }
+        Object.assign(payload, { think_unequal: true, think_node: unequal.node, think_node_min_ms: lo, think_node_max_ms: hi });
+      }
       try {
         const res = await fetch("/api/mode", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ think_min_ms: min, think_max_ms: max })
+          body: JSON.stringify(payload)
         });
         const body = await res.json();
         if (!res.ok) thinkStatus.textContent = body.error || `erro ${res.status}`;
-        else { thinkDirty = false; thinkCurrent = [min, max]; }
+        else {
+          thinkDirty = false;
+          thinkCurrent = [min, max];
+          if (unequal !== undefined) unequalDirty = false;
+        }
       } catch (err) {
         thinkStatus.textContent = String(err);
       } finally {
@@ -1013,8 +1089,31 @@
       }
     }
 
+    /** Estado da caixa "Carga desigual" para mandar junto com o Aplicar. */
+    function unequalFromForm() {
+      if (!thinkUnequal.checked) return serverUnequal || unequalDirty ? false : undefined;
+      return { node: thinkNode.value, min: Number(thinkNodeMin.value), max: Number(thinkNodeMax.value) };
+    }
+
     [thinkMin, thinkMax].forEach((el) => el.addEventListener("input", () => { thinkDirty = true; }));
-    document.getElementById("think-apply").addEventListener("click", () => sendThink(Number(thinkMin.value), Number(thinkMax.value)));
+    [thinkNode, thinkNodeMin, thinkNodeMax].forEach((el) => el.addEventListener("input", () => { unequalDirty = true; }));
+    thinkUnequal.addEventListener("change", () => {
+      showUnequal(thinkUnequal.checked);
+      unequalDirty = true;
+      if (thinkUnequal.checked) {
+        // sugestão: o nó escolhido pede bem mais que os outros
+        if (thinkNodeMin.value === "") thinkNodeMin.value = "0";
+        if (thinkNodeMax.value === "") thinkNodeMax.value = "500";
+      } else if (serverUnequal) {
+        // desmarcar desliga na hora: o nó volta para a pausa geral
+        const [a, b] = thinkCurrent || [Number(thinkMin.value) || 0, Number(thinkMax.value) || 0];
+        sendThink(a, b, false);
+      } else {
+        unequalDirty = false;
+      }
+    });
+    document.getElementById("think-apply").addEventListener("click", () =>
+      sendThink(Number(thinkMin.value), Number(thinkMax.value), unequalFromForm()));
     document.getElementById("think-zero").addEventListener("click", () => sendThink(0, 0));
     document.querySelectorAll(".think-mult").forEach((btn) => btn.addEventListener("click", () => {
       const k = Number(btn.dataset.mult);

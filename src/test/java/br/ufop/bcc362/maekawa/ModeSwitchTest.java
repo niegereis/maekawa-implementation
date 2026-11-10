@@ -7,12 +7,14 @@ import br.ufop.bcc362.maekawa.node.Node;
 import br.ufop.bcc362.maekawa.node.Requester;
 import br.ufop.bcc362.maekawa.node.Variant;
 import br.ufop.bcc362.maekawa.node.Voter;
+import br.ufop.bcc362.maekawa.observer.Observer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -265,6 +267,70 @@ class ModeSwitchTest {
             assertTrue(cl.committed() >= 10, "sem pausa o cliente pede bem mais: " + cl.committed());
 
             assertThrows(IllegalArgumentException.class, () -> c.observer.setThink(500, 100));
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    void cargaDesigualDaPausaPropriaSoAoNoEscolhido() throws Exception {
+        try (TestCluster c = new TestCluster(Variant.RESOLUTION, 5, 10, null, true)) {
+            c.awaitSettled();
+            // geral 1 s; sync-2 (e o cliente dele) sem pausa
+            c.observer.setThink(1000, 1000, Optional.of(new Observer.ThinkException("2", 0, 0)));
+            awaitThinkAcked(c, 7);
+            Map<String, Object> st = c.observer.modeStatus();
+            assertEquals(true, st.get("think_unequal"));
+            assertEquals("sync-2", st.get("think_node"));
+            assertEquals(List.of(0L, 0L), ((Map<?, ?>) st.get("node_think")).get("sync-2"));
+            assertEquals(List.of(1000L, 1000L), ((Map<?, ?>) st.get("node_think")).get("sync-1"));
+
+            Client hot = continuous(c, 2), cold = continuous(c, 1);
+            Thread th = Thread.ofVirtual().start(() -> runQuietly(hot));
+            Thread tc = Thread.ofVirtual().start(() -> runQuietly(cold));
+            Thread.sleep(1_500);
+            th.interrupt();
+            tc.interrupt();
+            th.join(5_000);
+            tc.join(5_000);
+            assertArrayEquals(new long[]{0, 0}, hot.think(), "o no escolhido repassou a pausa propria");
+            assertArrayEquals(new long[]{1000, 1000}, cold.think(), "os outros ficam com a geral");
+            assertTrue(hot.committed() > 2 * cold.committed(),
+                    "o cliente do no escolhido pede bem mais: " + hot.committed() + " vs " + cold.committed());
+
+            // a troca da pausa geral sem think_unequal mantem a excecao
+            c.observer.setThink(500, 500);
+            assertEquals("sync-2", c.observer.modeStatus().get("think_node"));
+            // desligar devolve sync-2 a pausa geral
+            c.observer.setThink(500, 500, Optional.empty());
+            awaitThinkAcked(c, 7);
+            assertEquals(false, c.observer.modeStatus().get("think_unequal"));
+            assertEquals(List.of(500L, 500L), ((Map<?, ?>) c.observer.modeStatus().get("node_think")).get("sync-2"));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> c.observer.setThink(500, 500, Optional.of(new Observer.ThinkException("sync-9", 0, 0))));
+            assertThrows(IllegalArgumentException.class,
+                    () -> c.observer.setThink(500, 500, Optional.of(new Observer.ThinkException("sync-1", 300, 100))));
+        }
+    }
+
+    private static void awaitThinkAcked(TestCluster c, int n) throws InterruptedException {
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (!Integer.valueOf(n).equals(c.observer.modeStatus().get("think_acked"))) {
+            if (System.nanoTime() > deadline) fail("nos nao confirmaram a pausa: " + c.observer.modeStatus());
+            Thread.sleep(5);
+        }
+    }
+
+    private static Client continuous(TestCluster c, int id) {
+        // configurado com 1 s; quem manda e o que vier no COMMITTED
+        return new Client(new Client.Config(id, "sync-" + id, 0, 1000, 1000, 0, 10_000, true),
+                c.net.endpoint("client-" + id), new EventLog("client-" + id, null, TestCluster.QUIET));
+    }
+
+    private static void runQuietly(Client cl) {
+        try {
+            cl.run();
+        } catch (InterruptedException ignored) {
         }
     }
 

@@ -53,6 +53,23 @@ class ObserverHttpTest {
                 JsonNode th = post(base + "/mode", "{\"think_min_ms\": 500, \"think_max_ms\": 1500}", 200);
                 assertEquals(500, th.get("think_min_ms").asLong());
                 assertEquals(1500, th.get("think_max_ms").asLong());
+                JsonNode un = post(base + "/mode", "{\"think_min_ms\": 1000, \"think_max_ms\": 2000, \"think_unequal\": true,"
+                        + " \"think_node\": \"3\", \"think_node_min_ms\": 0, \"think_node_max_ms\": 100}", 200);
+                assertTrue(un.get("think_unequal").asBoolean());
+                assertEquals("sync-3", un.get("think_node").asText());
+                assertEquals(100, un.get("think_node_max_ms").asLong());
+                assertEquals(1000, un.get("think_min_ms").asLong());
+                post(base + "/mode", "{\"think_unequal\": true, \"think_node\": \"sync-1\","
+                        + " \"think_node_min_ms\": 0, \"think_node_max_ms\": 1}", 400); // sem a pausa geral
+                post(base + "/mode", "{\"think_min_ms\": 1, \"think_max_ms\": 2, \"think_unequal\": true}", 400);
+                post(base + "/mode", "{\"think_min_ms\": 1, \"think_max_ms\": 2, \"think_unequal\": true,"
+                        + " \"think_node\": \"sync-42\", \"think_node_min_ms\": 0, \"think_node_max_ms\": 1}", 400);
+                post(base + "/mode", "{\"think_min_ms\": 1, \"think_max_ms\": 2, \"think_unequal\": true,"
+                        + " \"think_node\": \"sync-1\", \"think_node_min_ms\": 9, \"think_node_max_ms\": 1}", 400);
+                assertEquals("sync-3", get(base + "/mode", 200).get("think_node").asText(), "pedido invalido nao muda a excecao");
+                JsonNode eq = post(base + "/mode", "{\"think_min_ms\": 500, \"think_max_ms\": 1500, \"think_unequal\": false}", 200);
+                assertFalse(eq.get("think_unequal").asBoolean());
+                assertTrue(eq.get("think_node").isNull());
                 post(base + "/mode", "{\"think_min_ms\": 500}", 400);
                 post(base + "/mode", "{\"think_min_ms\": 900, \"think_max_ms\": 100}", 400);
                 post(base + "/mode", "{\"cs_min_ms\": 1500}", 400);

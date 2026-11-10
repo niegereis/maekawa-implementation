@@ -236,6 +236,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "think_min_ms e think_max_ms devem ir juntos, em ms inteiros"}, 400)
                 return
             change["think_min_ms"], change["think_max_ms"] = lo, hi
+        if "think_unequal" in body:
+            # carga desigual: um nó (e o cliente dele) com pausa própria; o observador valida o resto
+            unequal = body["think_unequal"]
+            if not isinstance(unequal, bool) or "think_min_ms" not in change:
+                self._json({"error": "think_unequal deve ser true/false e ir junto com think_min_ms + think_max_ms"}, 400)
+                return
+            change["think_unequal"] = unequal
+            if unequal:
+                node, lo, hi = body.get("think_node"), body.get("think_node_min_ms"), body.get("think_node_max_ms")
+                ints = all(isinstance(v, int) and not isinstance(v, bool) for v in (lo, hi))
+                if not isinstance(node, (str, int)) or isinstance(node, bool) or not ints:
+                    self._json({"error": "think_unequal=true precisa de think_node e think_node_min_ms + think_node_max_ms em ms inteiros"}, 400)
+                    return
+                change["think_node"] = str(node)
+                change["think_node_min_ms"], change["think_node_max_ms"] = lo, hi
         if not change:
             self._json({"error": "informe sync_enabled, cs_min_ms + cs_max_ms e/ou think_min_ms + think_max_ms"}, 400)
             return
