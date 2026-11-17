@@ -1,10 +1,41 @@
 {
   "expect": "normal",
+  "config": {
+    "nodes": 7,
+    "clients": 7,
+    "k": 3,
+    "variant": "RESOLUTION",
+    "cs_ms": [
+      200,
+      1000
+    ],
+    "think_ms": [
+      1000,
+      5000
+    ],
+    "accesses_per_client": 20,
+    "seeds": {
+      "sync-0": 145474017,
+      "sync-1": 145474018,
+      "sync-2": 145474019,
+      "sync-3": 145474020,
+      "sync-4": 145474021,
+      "sync-5": 145474022,
+      "sync-6": 145474023,
+      "client-0": 145475017,
+      "client-1": 145475018,
+      "client-2": 145475019,
+      "client-3": 145475020,
+      "client-4": 145475021,
+      "client-5": 145475022,
+      "client-6": 145475023
+    }
+  },
   "observer": {
     "begins": 140,
     "ends": 140,
-    "max_active": 1,
-    "violations": 0
+    "max_active": 3,
+    "violations": 5
   },
   "clients": {
     "client-0": {
@@ -50,20 +81,20 @@
     "missing_committed": []
   },
   "protocol_messages": {
-    "FAILED": 183,
-    "INQUIRE": 23,
-    "LOCKED": 435,
-    "RELEASE": 420,
-    "RELINQUISH": 15,
-    "REQUEST": 420
+    "FAILED": 175,
+    "INQUIRE": 20,
+    "LOCKED": 408,
+    "RELEASE": 396,
+    "RELINQUISH": 12,
+    "REQUEST": 396
   },
-  "protocol_total": 1496,
+  "protocol_total": 1407,
   "entries": 140,
-  "protocol_per_entry": 10.69,
+  "protocol_per_entry": 10.05,
   "acquire_wait_ms": {
-    "n": 140,
-    "median": 725.4,
-    "p90": 1641.5,
-    "max": 3332.6
+    "n": 132,
+    "median": 680.7,
+    "p90": 1936.0,
+    "max": 3847.9
   }
 }

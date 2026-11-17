@@ -1,5 +1,36 @@
 {
   "expect": "sem-protocolo",
+  "config": {
+    "nodes": 7,
+    "clients": 7,
+    "k": 3,
+    "variant": "RESOLUTION",
+    "cs_ms": [
+      200,
+      1000
+    ],
+    "think_ms": [
+      0,
+      0
+    ],
+    "accesses_per_client": 5,
+    "seeds": {
+      "sync-0": 305108880,
+      "sync-1": 305108881,
+      "sync-2": 305108882,
+      "sync-3": 305108883,
+      "sync-4": 305108884,
+      "sync-5": 305108885,
+      "sync-6": 305108886,
+      "client-0": 305109880,
+      "client-1": 305109881,
+      "client-2": 305109882,
+      "client-3": 305109883,
+      "client-4": 305109884,
+      "client-5": 305109885,
+      "client-6": 305109886
+    }
+  },
   "observer": {
     "begins": 35,
     "ends": 35,

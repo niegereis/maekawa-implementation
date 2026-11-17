@@ -1,5 +1,36 @@
 {
   "expect": "deadlock",
+  "config": {
+    "nodes": 7,
+    "clients": 7,
+    "k": 3,
+    "variant": "BASIC",
+    "cs_ms": [
+      200,
+      1000
+    ],
+    "think_ms": [
+      0,
+      0
+    ],
+    "accesses_per_client": 1,
+    "seeds": {
+      "sync-0": 303802172,
+      "sync-1": 303802173,
+      "sync-2": 303802174,
+      "sync-3": 303802175,
+      "sync-4": 303802176,
+      "sync-5": 303802177,
+      "sync-6": 303802178,
+      "client-0": 303803172,
+      "client-1": 303803173,
+      "client-2": 303803174,
+      "client-3": 303803175,
+      "client-4": 303803176,
+      "client-5": 303803177,
+      "client-6": 303803178
+    }
+  },
   "observer": {
     "begins": 0,
     "ends": 0,
