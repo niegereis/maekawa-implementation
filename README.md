@@ -221,3 +221,31 @@ Uma linha JSON por evento em stdout:
 ```
 
 `kind` é `protocol`, `instrumentation` ou `local`. `wall_clock` é só informativo; nenhuma métrica compara horários de hosts diferentes.
+
+## Sobre o trabalho
+
+Desenvolvido para **BCC362 — Sistemas Distribuídos** (UFOP), na trilha de algoritmos, opção **A6 — Maekawa**. O [enunciado completo](docs/BCC362_TP02.pdf) está no repositório.
+
+O que o enunciado pede e onde cada ponto é atendido:
+
+| Requisito | Onde |
+|---|---|
+| Pelo menos 5 clientes e 5 processos no Cluster Sync, em processos ou contêineres separados | 7 nós (`StatefulSet`) e 7 clientes (`Job` indexado), um pod cada — [k8s/base](k8s/base) |
+| Cada cliente conhece apenas um elemento do Cluster Sync | `client-i` só fala com `sync-i` |
+| `request_id` único, por exemplo (client_id, sequencial) | `RequestId.java`; o timestamp físico fica no log, mas não substitui o relógio lógico |
+| 10 a 50 acessos de escrita por cliente | 20 por cliente nos overlays (`ACCESSES`) |
+| Seção crítica com sleep aleatório de 0,2 a 1 s | `CS_MS=200..1000` |
+| Responder COMMITTED; cliente espera de 1 a 5 s e repete | `THINK_MS=1000..5000`, `Client.java` |
+| `acquire(R, request_id)` e `release(R, request_id)`, separando sincronização da seção crítica | `Node.acquire` e `Node.release`; a seção crítica roda fora do lock do nó |
+| Sem coordenador fixo que mantenha todas as autorizações | o observador só registra e acusa; não concede nem bloqueia |
+| Processos independentes comunicando pela rede (nada de mutex local ou memória compartilhada) | TCP entre pods — `common/Transport` |
+| **A6:** conjuntos de votação com interseção par a par | plano de Fano, validado em `Quorum.validate()` — [protocolo §1](docs/protocolo.md) |
+| **A6:** cada votante concede uma permissão por vez | `Voter.java` |
+| **A6:** apresentar os conjuntos e justificar a exclusão mútua | [protocolo §1 e §4](docs/protocolo.md), [as 4 propriedades](docs/propriedades.md) |
+| **A6:** mostrar que a versão básica gera deadlock mesmo sem falhas | overlay `deadlock` com `VARIANT=basic`: 3 pedidos, 0 entradas — [evidence/deadlock](evidence/README.md) |
+| **A6:** variante documentada de resolução, com as mensagens adicionais | FAILED, INQUIRE e RELINQUISH com prioridade `(lamport, id)` — [protocolo §5](docs/protocolo.md) |
+| **A6:** usar 7 ou 9 nós | 7 (`N_NODES=7`; 4 e 13 também funcionam) |
+| Apresentar logs e verificação automática da propriedade esperada | JSON Lines por processo e `scripts/verify.py`, que falha a rodada se a propriedade for violada — [evidence/](evidence/README.md) |
+| Seminário: ensinar como a solução funciona e demonstrar execução concorrente | [roteiro da apresentação](docs/roteiro-apresentacao.md) e a visualização ao vivo em `viz/` |
+
+Fora do que foi pedido, por decisão própria: execução em Kubernetes (kind e k3s na Oracle Cloud), troca de modo em tempo de execução para ligar e desligar o Maekawa durante a rodada, e o painel ao vivo dos sete nós.
