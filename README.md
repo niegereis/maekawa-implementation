@@ -11,7 +11,9 @@ O Maekawa pode ser **ligado e desligado em tempo de execução** pela API HTTP d
 
 O Kubernetes só orquestra (nomes estáveis, subida, logs). Nenhum `Lease`, lock do etcd ou serviço de nuvem entra na sincronização.
 
-Documentos: [plano](notes/plano-maekawa-a6.md) · [protocolo](docs/protocolo.md) · [estados do protocolo](docs/diagrama-processo.excalidraw) · [fluxo do código](docs/fluxo-implementacao.excalidraw) (abrir em excalidraw.com).
+Documentos: [protocolo](docs/protocolo.md) · [as 4 propriedades](docs/propriedades.md) · [roteiro da apresentação](docs/roteiro-apresentacao.md) · [enunciado](docs/BCC362_TP02.pdf) · [evidências](evidence/README.md).
+
+Desenhos (abrir em excalidraw.com): [estados do protocolo](docs/diagrama-processo.excalidraw) · [fluxo do código](docs/fluxo-implementacao.excalidraw) · [topologia](docs/maekawa-topologia.excalidraw) · [cenários](docs/maekawa-cenarios.excalidraw).
 
 ## Versões
 
@@ -144,7 +146,7 @@ O verificador falha se: rodada normal tiver violação ou pedido sem COMMITTED; 
 |---|---|
 | `sem-protocolo` | `SYNC_ENABLED=false`: o observador acusa sobreposição (a instrumentação enxerga) |
 | `deadlock` | versão básica, 3 pedidos simultâneos, gate segura 3 REQUESTs por 20 s (a partir da primeira mensagem retida): ninguém entra, Job falha de propósito |
-| `normal` ×3 | 20 acessos por cliente, pausa 1–5 s, zero violação |
+| `normal` ×3 | 20 acessos por cliente, pausa 1–5 s, zero violação (nas evidências, `normal/2` e `normal/3` foram demos de troca de modo; ver [evidence/README.md](evidence/README.md)) |
 | `alta-contencao` ×3 | sem pausa; aparecem FAILED, INQUIRE, RELINQUISH |
 | `desigual` | client-0 sem pausa, demais normais; distribuição de espera |
 | `normal-4` ×3 | quantidade de participantes: a carga `normal` com 4 nós e 4 clientes (`N_NODES=4`, grade 2×2, K = 3); compara com `normal` (7 nós) |
