@@ -1,4 +1,4 @@
-# Protocolo — Maekawa (A6)
+# Protocolo — Maekawa
 
 Este documento fixa os nomes, estados e regras que o código implementa. Os diagramas correspondentes estão em `diagrama-processo.excalidraw` (seções 3, 8, 9 e 10). Qualquer mudança de regra passa por aqui antes de passar pelo código.
 

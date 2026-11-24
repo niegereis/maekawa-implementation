@@ -1,4 +1,15 @@
-# TP2 BCC362 — Exclusão mútua distribuída com Maekawa (A6)
+# Exclusão mútua distribuída com o algoritmo de Maekawa
+
+Sete processos disputam o mesmo recurso sem nenhum coordenador central. Cada um pede permissão a um **quórum de 3**, nunca aos 7, e dois quóruns quaisquer sempre se cruzam em exatamente um nó — é esse nó que desempata. Java 21 e Kubernetes, com um observador que registra cada entrada e acusa sobreposições.
+
+| Cenário | Resultado medido |
+|---|---|
+| Protocolo ligado, 5 rodadas | **700 acessos, 0 sobreposições**; 10 a 12 mensagens de protocolo por entrada (a teoria prevê de 3√N a 6√N, ou 8 a 16 para N = 7) |
+| Protocolo desligado (controle) | 33 sobreposições em 35 acessos, com até 7 processos no recurso ao mesmo tempo |
+| Versão básica, sem tratamento de deadlock | 3 pedidos, **0 entradas**: espera circular de votos, sem nenhuma falha nem perda de mensagem |
+| Disputa total (sem pausa entre pedidos) | espera mediana de 3,7 s até conseguir o quórum |
+
+Cada número sai de um `report.json` em [evidence/](evidence/README.md), gerado por `scripts/verify.py` a partir dos logs da rodada.
 
 Sete processos independentes (`sync-0` … `sync-6`) sincronizam o acesso de escrita a um recurso hipotético **R** pelo algoritmo de Maekawa (1985), com conjuntos de votação do plano de Fano (K = 3). Há duas versões:
 

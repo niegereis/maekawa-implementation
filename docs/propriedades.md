@@ -1,4 +1,4 @@
-# As 4 propriedades — Maekawa (A6)
+# As 4 propriedades — Maekawa
 
 Referência: slide 8 da aula. Para cada propriedade: o que o algoritmo garante **por construção** e o que só se **observa na prática**.
 
