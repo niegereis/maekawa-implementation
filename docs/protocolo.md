@@ -106,7 +106,7 @@ Pedidos simultâneos de p0, p1 e p2 (`S0 = {p0,p1,p2}`, `S1 = {p1,p3,p5}`, `S2 =
 2. p5 vota em p1; p3 vota em p2; p6 vota em p2.
 3. Só então chegam: REQUEST de p0 a p1 (fila), REQUEST de p1 a p3 (fila), REQUEST de p2 a p2 (fila).
 
-Resultado: p0 tem {p0, p2} e espera p1; p1 tem {p1, p5} e espera p3; p2 tem {p3, p6} e espera p2. Ninguém completa; ninguém envia RELEASE. Timeout da rodada: 15 s.
+Resultado: p0 tem {p0, p2} e espera p1; p1 tem {p1, p5} e espera p3; p2 tem {p3, p6} e espera p2. Ninguém completa; ninguém envia RELEASE. Timeout do pedido: `REQUEST_TIMEOUT_MS`, 45 s no overlay `deadlock`.
 
 Com `VARIANT=resolution`, com Lamport igual nos três (todos pediram em `lamport = 1`), as prioridades são (1,0) < (1,1) < (1,2): p1 recebe REQUEST de p0 melhor que o seu → INQUIRE a si mesmo → cede (não tem quórum) → p0 recebe LOCKED de p1 e entra. Em seguida p1 e p2 se resolvem pela mesma regra.
 

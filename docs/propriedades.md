@@ -27,7 +27,7 @@ Se alguém quer entrar, alguém entra.
 
 - **Básico: viola.** Pedidos simultâneos de p0, p1 e p2 com ordens de chegada diferentes nos votantes formam um ciclo de espera. Cada um segura parte dos votos e espera o voto que o outro segura. O perfil `deadlock` reproduz o cenário (protocolo §7 e §8).
 - **Resolução: garantida por argumento.** Entre os pedidos em disputa, o de menor `Priority = (lamport, process_id)` nunca recebe FAILED. Por INQUIRE, ele recupera qualquer voto detido por um pedido pior que ainda não entrou. Os piores que já entraram saem em tempo finito (a seção crítica termina) e liberam.
-- **Observado.** No perfil `deadlock`, o básico trava até o timeout da rodada (15 s). A variante com resolução completa todos os pedidos.
+- **Observado.** No perfil `deadlock`, o básico trava até o timeout do pedido (`REQUEST_TIMEOUT_MS`, 45 s no overlay). A variante com resolução completa todos os pedidos.
 
 ## 3. Sem starvation
 
