@@ -2,6 +2,10 @@
 
 Sete processos disputam o mesmo recurso sem nenhum coordenador central. Cada um pede permissão a um **quórum de 3**, nunca aos 7, e dois quóruns quaisquer sempre se cruzam em exatamente um nó — é esse nó que desempata. Java 21 e Kubernetes, com um observador que registra cada entrada e acusa sobreposições.
 
+![O painel ao vivo dos sete nós durante uma rodada](docs/demo-maekawa.gif)
+
+Os 7 nós, quem emprestou voto para quem e quem está no recurso, em tempo real. No meio da gravação o Maekawa é **desligado com tudo rodando**: o contador de R passa de 1 para 2, a caixa fica vermelha e a tabela de épocas registra as violações. Religado, volta a 1 e a zero violação. A página é a `viz/`, descrita em [Ver os nós e os logs](#ver-os-nós-e-os-logs).
+
 | Cenário | Resultado medido |
 |---|---|
 | Protocolo ligado, 5 rodadas | **700 acessos, 0 sobreposições**; 10 a 12 mensagens de protocolo por entrada (a teoria prevê de 3√N a 6√N, ou 8 a 16 para N = 7) |
